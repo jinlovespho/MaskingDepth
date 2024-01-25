@@ -8,7 +8,7 @@ from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
 from timm.models.vision_transformer_hybrid import HybridEmbed
-from timm.models.resnetv2 import create_resnetv2_stem, make_div, Bottleneck, DownsampleConv, DownsampleAvg, \
+from timm.models.resnetv2 import create_resnetv2_stem, make_divisible, Bottleneck, DownsampleConv, DownsampleAvg, \
     PreActBottleneck
 from timm.models.layers import GroupNormAct, ClassifierHead, StdConv2d, create_conv2d, StdConv2dSame
 from functools import partial
@@ -206,7 +206,7 @@ class ResNetV2(nn.Module):
         wf = width_factor
 
         self.feature_info = []
-        stem_chs = make_div(stem_chs * wf)
+        stem_chs = make_divisible(stem_chs * wf)
         self.stem = create_resnetv2_stem(
             in_chans, stem_chs, stem_type, preact, conv_layer=conv_layer, norm_layer=norm_layer)
         stem_feat = ('stem.conv3' if is_stem_deep(stem_type) else 'stem.conv') if preact else 'stem.norm'
@@ -219,7 +219,7 @@ class ResNetV2(nn.Module):
         block_fn = PreActBottleneck if preact else Bottleneck
         self.stages = nn.Sequential()
         for stage_idx, (d, c, bdpr) in enumerate(zip(layers, channels, block_dprs)):
-            out_chs = make_div(c * wf)
+            out_chs = make_divisible(c * wf)
             stride = 1 if stage_idx == 0 else 2
             if curr_stride >= output_stride:
                 dilation *= stride
