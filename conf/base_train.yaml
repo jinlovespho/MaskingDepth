@@ -32,5 +32,5 @@ Train:
     width: 640
     dataset: 'kitti_depth'
     splits: 'eigen_temp'
-    data_path: '/home/cvlab08/projects/data/kitti'
+    data_path: '/mnt/ssd2/dataset/kitti_raw'
     img_ext: '.png'

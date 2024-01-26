@@ -120,8 +120,6 @@ class KITTIDepthDataset(KITTIDataset):
 
     def get_depth(self, folder, frame_index, side, do_flip = False):
         f_str = "{:010d}.png".format(frame_index)
-        print(self.data_path)
-        print(folder)
         depth_path = os.path.join(
             self.data_path,
             folder,
