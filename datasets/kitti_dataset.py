@@ -120,12 +120,13 @@ class KITTIDepthDataset(KITTIDataset):
 
     def get_depth(self, folder, frame_index, side, do_flip = False):
         f_str = "{:010d}.png".format(frame_index)
+        print(self.data_path)
+        print(folder)
         depth_path = os.path.join(
             self.data_path,
             folder,
             "proj_depth/groundtruth/image_0{}".format(self.side_map[side]),
             f_str)
-
         depth_gt = pil.open(depth_path)
         depth_gt = depth_gt.resize(self.full_res_shape, pil.NEAREST)
         depth_gt = np.array(depth_gt).astype(np.float32) / 256

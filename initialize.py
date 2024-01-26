@@ -154,7 +154,7 @@ def data_loader(data_cfg, batch_size, num_workers):
                     "kitti_depth": datasets.KITTIDepthDataset,
                     "nyu": datasets.NYUDataset,
                     "virtual_kitti": datasets.Virtual_Kitti}
-
+    
     dataset = datasets_dict[data_cfg.dataset]
     fpath = os.path.join(os.path.dirname(__file__), "splits", data_cfg.splits, "{}_files.txt")
 

@@ -31,6 +31,7 @@ if __name__ == "__main__":
         ############ mixed precision
         scaler = torch.cuda.amp.GradScaler(enabled=True)
         
+        breakpoint()
         # configuration & device setting
         conf =  yaml.load(f, Loader=yaml.FullLoader)
         train_cfg = DotMap(conf['Train'])
