@@ -28,6 +28,7 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
     with open(args.conf, 'r') as f:
+        
         ############ mixed precision
         scaler = torch.cuda.amp.GradScaler(enabled=True)
         
@@ -39,10 +40,12 @@ if __name__ == "__main__":
         # seed 
         initialize.seed_everything(train_cfg.seed)
         
+        # breakpoint()
+        
         #model_load
         model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
         model_sub, parameters_to_train_sub = initialize.additional_model_load(train_cfg.add_model, device)
-        model.update(model_sub)
+        model.update(model_sub)     # 파이썬 내장 dictionary function
         parameters_to_train += parameters_to_train_sub
 
         #optimizer & scheduler
@@ -88,7 +91,7 @@ if __name__ == "__main__":
 
             # train
             print(f'Training progress(ep:{epoch+1})')
-            for i, inputs in enumerate(tqdm(train_loader)):
+            for i, inputs in enumerate(tqdm(train_loader)):     
                 for key, ipt in inputs.items():
                     inputs[key] = ipt.to(device)
 

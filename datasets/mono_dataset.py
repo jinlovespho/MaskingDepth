@@ -184,7 +184,7 @@ class MonoDataset(data.Dataset):
             stereo_T[0, 3] = side_sign * baseline_sign * 0.1
 
             inputs["stereo_T"] = torch.from_numpy(stereo_T)
-
+            
         self.preprocess(inputs)
         
         if self.load_depth:

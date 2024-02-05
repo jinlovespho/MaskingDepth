@@ -91,19 +91,21 @@ class Transformer(nn.Module):
         self.hooks = hooks
     
     def forward(self, x, mask=None):
+        # breakpoint()
         i = 0
         ll = []
         for attn, ff in self.layers:
             # if mask == None or i in self.hooks[-1]:
             if mask == None:
-                x = attn(x) + x
+                x = attn(x) + x     # transformer residual connection 반영 O
             else:
                 x = attn.fn(attn.norm(x),mask) + x
 
-            x = ff(x) + x
-            if i in self.hooks:
+            x = ff(x) + x           # 마찬가지 transformer residual connection 반영 O
+            if i in self.hooks:     # self.hooks = [2, 5, 8, 11] 즉, transformer i-th block의 output 을 빼온 것. FPN 느낌.
                 ll.append(x)
             i += 1
+        # breakpoint()
         self.features = tuple(ll)
     
         return x

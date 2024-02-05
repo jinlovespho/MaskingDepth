@@ -35,21 +35,21 @@ def baseline_model_load(model_cfg, device):
     parameters_to_train = []
 
     if model_cfg.baseline == 'DPT':
-        v = networks.ViT(image_size = (384,384),
+        v = networks.ViT(image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
                         patch_size = 16,
                         num_classes = 1000,
                         dim = 768,
-                        depth = 12,
+                        depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
                         heads = 12,
                         mlp_dim = 3072)
         v.resize_pos_embed(192,640)
 
         model['depth'] = networks.Masked_DPT(encoder=v,
                         max_depth = model_cfg.max_depth,
-                        features=[96, 192, 384, 768],
-                        hooks=[2, 5, 8, 11],
-                        vit_features=768,
-                        use_readout='project')
+                        features=[96, 192, 384, 768],           # 무슨 feature ?
+                        hooks=[2, 5, 8, 11],                    # hooks ?
+                        vit_features=768,                       # embed dim ? yes!
+                        use_readout='project')      # DPT 에서는 cls token = readout token 이라고 부르고 projection으로 cls token 처리 
         
     elif model_cfg.baseline == 'DPT_H':
         v = networks.ViT(image_size = (384,384),

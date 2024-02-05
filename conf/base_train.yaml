@@ -1,7 +1,7 @@
 ##### Supervised Training ######
 Train:
-  model_name: 'pho'  # model names to save log file or wandb.
-  log_path: './log'  # path to the log file, only works when the wandb option is False.
+  model_name: 'pho_model'  # model names to save log file or wandb.
+  log_path: './log/20240126'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
   seed: 41
   start_epoch: 0
@@ -28,7 +28,7 @@ Train:
     threshold: 0.7
 
   data:
-    height: 192
+    height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것 
     width: 640
     dataset: 'kitti_depth'
     splits: 'eigen_temp'
