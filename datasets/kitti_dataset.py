@@ -247,7 +247,8 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
             for _ in range(num_frames):
                 # ForkedPdb().set_trace()
                 inputs={}
-                inputs['curr_frame_idx']=start_idx       
+                inputs['curr_folder']=folder
+                inputs['curr_frame']=start_idx       
                 inputs["color"] = self.get_color(folder, start_idx, side, do_flip)
                 
                 K = self.K.copy()
@@ -277,48 +278,8 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                 start_idx += 1
             
             # ForkedPdb().set_trace()
+            inputs_lst.reverse()
             return inputs_lst           # For multiframe kitti dataset 
           
         return inputs
             
-            
-        #     inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
-            
-        #     ForkedPdb().set_trace()
-            
-        #     # lst_prev_frame_idx = []
-        #     # lst_prev_frame = []
-        #     # start_frame_idx = frame_index - self.num_prev_frame
-            
-        #     # if start_frame_idx < 0:
-        #     #     pass
-        #     # else:
-        #     #     lst_frames_idx = [i for i in range(start_frame_idx, frame_index+1)]     # prev_frame_idxs + current_frame_idx
-        #     #     lst_frames = [ inputs]
-
-        #     K = self.K.copy()
-        #     K[0, :] *= self.width 
-        #     K[1, :] *= self.height
-
-        #     inv_K = np.linalg.pinv(K)
-
-        #     inputs["K"] = torch.from_numpy(K)
-        #     inputs["inv_K"] = torch.from_numpy(inv_K)
-
-        #     stereo_T = np.eye(4, dtype=np.float32)
-        #     baseline_sign = -1 if do_flip else 1
-        #     side_sign = -1 if side == "l" else 1
-        #     stereo_T[0, 3] = side_sign * baseline_sign * 0.1
-
-        #     inputs["stereo_T"] = torch.from_numpy(stereo_T)
-               
-        # self.preprocess(inputs)
-        
-        # if self.load_depth:
-        #     depth_gt = self.get_depth(folder, frame_index, side, do_flip)
-        #     inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
-        #     inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
-
-            
-        # ForkedPdb().set_trace()
-        # return inputs
