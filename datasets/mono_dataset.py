@@ -23,6 +23,22 @@ from torchvision import transforms
 import torchvision.utils
 from  .autoaugment import rand_augment_transform, Cutout, _rotate_level_to_arg
 
+import sys
+import pdb
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
 ROLL    = 0
 ROTATE  = 1
 CUTOUT  = 2
@@ -55,7 +71,8 @@ class MonoDataset(data.Dataset):
                  use_box,
                  gt_num = -1,
                  is_train=False,
-                 img_ext='.jpg'):
+                 img_ext='.jpg',
+                 num_prev_frame=None):
         super(MonoDataset, self).__init__()
         self.data_path = data_path
         self.filenames = filenames
@@ -184,6 +201,8 @@ class MonoDataset(data.Dataset):
             stereo_T[0, 3] = side_sign * baseline_sign * 0.1
 
             inputs["stereo_T"] = torch.from_numpy(stereo_T)
+            
+            
             
         self.preprocess(inputs)
         

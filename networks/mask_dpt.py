@@ -190,19 +190,24 @@ class Masked_DPT(nn.Module):
             layer_3 = self.act_postprocess3[0](self.encoder.transformer.features[2][batch_range, reform_indices])
             layer_4 = self.act_postprocess4[0](self.encoder.transformer.features[3][batch_range, reform_indices])
 
-        # transformer encoder outputs (intermediate ouputs 포함 O)
+        # transformer encoder transposed outputs (intermediate ouputs 포함 O)
         features= [layer_1, layer_2, layer_3, layer_4]
 
         # 여기서 unflatten 은 head 기준으로 token을 나누는 것
-        # (B, 480, 768) -> Transpose() -> (B,768,480) -> unflatten -> (B, 768, 12, 40) where 12=num_heads.
+        # (B,N,D) = (B, 480, 768) -> Transpose() -> (B,768,480) -> unflatten -> (B, 768, 12, 40) where 12=num_heads. 12가 heads로 나눌려는 이유가 아닐수도 ?
+        # input_image_size: (192,640)
+        # patch_size: (16,16)
+        # 192/16 = 12,
+        # 640/16 = 40 
+        
         if layer_1.ndim == 3:
-            layer_1 = self.unflatten(layer_1)       
-        if layer_2.ndim == 3:
-            layer_2 = self.unflatten(layer_2)
+            layer_1 = self.unflatten(layer_1)       # (B,768,12,40) 
+        if layer_2.ndim == 3:   
+            layer_2 = self.unflatten(layer_2)       # (B,768,12,40)
         if layer_3.ndim == 3:
-            layer_3 = self.unflatten(layer_3)
+            layer_3 = self.unflatten(layer_3)       # (B,768,12,40)
         if layer_4.ndim == 3:
-            layer_4 = self.unflatten(layer_4)
+            layer_4 = self.unflatten(layer_4)       # (B,768,12,40)
 
         # 이 과정을 왜하는지 이해가 X. 기존 layer_i.shape = (B, 768, 12, 40) 을 왜 다 이상하게 바꾸는거지.
         # transformer 의 output 들을 refinenet 에 넣기 전에 뭔가를 해줄려는 것 같은데 . .

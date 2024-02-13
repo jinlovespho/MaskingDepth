@@ -13,6 +13,8 @@ import utils
 import loss
 from eval import visualize, eval_metric, get_eval_dict
 
+from torchvision.utils import save_image
+
 
 TRAIN = 0
 EVAL  = 1
@@ -65,7 +67,7 @@ if __name__ == "__main__":
         
         if train_cfg.lr_scheduler:
             lr_scheduler = optim.lr_scheduler.StepLR(optimizer, train_cfg.scheduler_step_size, 0.1)
-
+        breakpoint
         # data loader
         train_loader, val_loader = initialize.data_loader(train_cfg.data, train_cfg.batch_size, train_cfg.num_workers)
                                         
@@ -91,7 +93,38 @@ if __name__ == "__main__":
 
             # train
             print(f'Training progress(ep:{epoch+1})')
-            for i, inputs in enumerate(tqdm(train_loader)):     
+            for i, inputs in enumerate(tqdm(train_loader)): 
+                
+                '''
+                batch_size=8일 때 
+                기존에는 inputs.keys() 하면 바로 dict_keys( ['color'], ['K'] . . ) 이렇게 inputs 자체가 하나였다.
+                inputs['color'].shape 을 하면 (8,3,192,640) 이었다.
+                
+                multiframe을 가져오록 설정하였기에, num_prev_frame=2, 즉 t-2, t-1, t 번째 frame 총 3개의 frame 을 들고와 
+                이제 inputs = [ t-2_frame, t-1_frame, t_frame ] 순서 이다
+                따라서 inputs[0].keys() 를 해야 dict_keys( ['color'], ['K'] . . ) 가 나오는 것. 
+                
+                결론은 이렇게 들어간다.
+                t-2_frame => inputs[0]['curr_frame_idx'] = tensor([  31, 2803,  132,    8,  126,  336, 3495,  690])     # 여기에 t-2번째 frame에 해당하는 서로 다른 8개의 img가 sample된 것 
+                t-1_frame => inputs[1]['curr_frame_idx'] = tensor([  32, 2804,  133,    9,  127,  337, 3496,  691])
+                t_frame   => inputs[2]['curr_frame_idx'] = tensor([  33, 2805,  134,   10,  128,  338, 3497,  692])
+
+                t-2_frame => inputs[0]['color'].shape = torch.Size([8, 3, 192, 640])    # 여기에는 t-2번째 frame에 해당하는 서로 다른 8개의 img 가 들어간 것 
+                t-1_frame => inputs[1]['color'].shape = torch.Size([8, 3, 192, 640])
+                t_frame   => inputs[2]['color'].shape = torch.Size([8, 3, 192, 640])
+                
+                
+                이제 previous frame 도 같이 뱉도록 dataloader을 짰으니,
+                이거를 어떻게 사용할지는 앞으로 어떤 실험을 돌려야할지 성훈님한테 물어보고 아래에 짜야할 듯 ?
+                
+                '''
+                
+                breakpoint()    
+                # save_image(inputs['color'][0],   f'./{epoch}_{i}_{0}.png')
+                # save_image(inputs['color'][1], f'./{epoch}_{i}_{1}.png')
+                # save_image(inputs['color'][2], f'./{epoch}_{i}_{2}.png')
+                # save_image(inputs['color'][3], f'./{epoch}_{i}_{3}.png')
+                
                 for key, ipt in inputs.items():
                     inputs[key] = ipt.to(device)
 

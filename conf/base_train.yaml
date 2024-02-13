@@ -6,8 +6,8 @@ Train:
   seed: 41
   start_epoch: 0
   end_epoch: 50
-  batch_size: 4
-  num_workers: 8
+  batch_size: 8
+  num_workers: 1
   lr: 1e-4
   d_consistency : 0.0  # depth consistency loss weight
   f_consistency : 0.0  # feature consistency loss weight
@@ -30,7 +30,8 @@ Train:
   data:
     height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것 
     width: 640
-    dataset: 'kitti_depth'
+    dataset: 'kitti_depth_multiframe'
+    num_prev_frame: 2                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것 
     splits: 'eigen_temp'
     data_path: '/mnt/ssd2/dataset/kitti_raw'
     img_ext: '.png'

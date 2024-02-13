@@ -10,8 +10,12 @@ EVAL    = 1
 def compute_loss(inputs, model, train_cfg, mode = TRAIN):
     losses = {}
     total_loss = 0
+    
+    breakpoint()
 
     pred_depth, full_features, fusion_features = model_forward(inputs['color'], model)
+    
+    breakpoint()
 
     ### compute supervised loss 
     if train_cfg.data.dataset in ['nyu'] or train_cfg.unlabeled_data.dataset in ['nyu']:

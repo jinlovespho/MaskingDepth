@@ -147,33 +147,38 @@ def additional_model_load(model_cfg, device):
 ########################    data laoder
 ############################################################################## 
 
-def data_loader(data_cfg, batch_size, num_workers):
+def data_loader(data_cfg, batch_size, num_workers):  
     # data loader
     datasets_dict = {"kitti": datasets.KITTIRAWDataset,
                     "kitti_odom": datasets.KITTIOdomDataset,
                     "kitti_depth": datasets.KITTIDepthDataset,
                     "nyu": datasets.NYUDataset,
-                    "virtual_kitti": datasets.Virtual_Kitti}
-    
+                    "virtual_kitti": datasets.Virtual_Kitti,
+                    "kitti_depth_multiframe":datasets.KITTIDepthMultiFrameDataset }
+    # breakpoint()
     dataset = datasets_dict[data_cfg.dataset]
     fpath = os.path.join(os.path.dirname(__file__), "splits", data_cfg.splits, "{}_files.txt")
 
     train_filenames = utils.readlines(fpath.format("train"))
     val_filenames   = utils.readlines(fpath.format("val"))
     
-
-    train_dataset = dataset(
-        data_cfg.data_path, train_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
-        gt_num = -1, is_train=True, img_ext=data_cfg.img_ext)
-    train_loader = DataLoader(
-        train_dataset, batch_size, True,
-        num_workers=num_workers, pin_memory=True, drop_last=True)
-    val_dataset = dataset(
-        data_cfg.data_path, val_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
-        gt_num = -1, is_train=False, img_ext=data_cfg.img_ext)
-    val_loader = DataLoader(
-        val_dataset, batch_size, True,
-        num_workers=num_workers, pin_memory=True, drop_last=True)
+    
+    breakpoint()
+    if data_cfg.dataset == 'kitti_depth_multiframe':
+        train_dataset = dataset(data_cfg.data_path, train_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
+                                 gt_num = -1, is_train=True, img_ext=data_cfg.img_ext, num_prev_frame=data_cfg.num_prev_frame)
+        
+        val_dataset = dataset(data_cfg.data_path, val_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
+                               gt_num = -1, is_train=False, img_ext=data_cfg.img_ext, num_prev_frame=data_cfg.num_prev_frame)
+    
+    else:
+        train_dataset = dataset(data_cfg.data_path, train_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
+                                gt_num = -1, is_train=True, img_ext=data_cfg.img_ext)
+        val_dataset = dataset(data_cfg.data_path, val_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
+                                gt_num = -1, is_train=False, img_ext=data_cfg.img_ext)
+        
+    train_loader = DataLoader(train_dataset, batch_size, True, num_workers=num_workers, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size, True, num_workers=num_workers, pin_memory=True, drop_last=True)
 
     return train_loader, val_loader
 

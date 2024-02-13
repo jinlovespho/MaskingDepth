@@ -7,6 +7,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os
+import random
 import skimage.transform
 import numpy as np
 import PIL.Image as pil
@@ -14,6 +15,23 @@ import torch
 
 from .kitti_utils import generate_depth_map
 from .mono_dataset import MonoDataset
+
+import sys
+import pdb
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
 
 
 class KITTIDataset(MonoDataset):
@@ -133,3 +151,174 @@ class KITTIDepthDataset(KITTIDataset):
             depth_gt = np.fliplr(depth_gt)
 
         return depth_gt
+
+
+class KITTIDepthMultiFrameDataset(KITTIDataset):
+    """KITTI dataset which uses the updated ground truth depth maps
+    """
+    def __init__(self, *args, **kwargs):
+        super(KITTIDepthMultiFrameDataset, self).__init__(*args, **kwargs)
+        self.num_prev_frame = kwargs['num_prev_frame']
+
+    def get_image_path(self, folder, frame_index, side):
+        f_str = "{:010d}{}".format(frame_index, self.img_ext)
+        image_path = os.path.join(
+            self.data_path,
+            folder,
+            "image_0{}/data".format(self.side_map[side]),
+            f_str)
+        return image_path
+
+    def get_depth(self, folder, frame_index, side, do_flip = False):
+        f_str = "{:010d}.png".format(frame_index)
+        depth_path = os.path.join(
+            self.data_path,
+            folder,
+            "proj_depth/groundtruth/image_0{}".format(self.side_map[side]),
+            f_str)
+        depth_gt = pil.open(depth_path)
+        depth_gt = depth_gt.resize(self.full_res_shape, pil.NEAREST)
+        depth_gt = np.array(depth_gt).astype(np.float32) / 256
+
+        if do_flip:
+            depth_gt = np.fliplr(depth_gt)
+
+        return depth_gt
+    
+    
+    def __getitem__(self, index):
+        """Returns a single training item from the dataset as a dictionary.
+ 
+        Values correspond to torch tensors.
+        Keys in the dictionary are either strings or tuples:
+            ("color", <frame_id>, <scale>)          for raw colour images,
+            ("color_aug", <frame_id>, <scale>)      for augmented colour images,
+
+            ("color")                               for raw colour images,
+            ("color_aug")                           for augmented colour images,
+            ("K") or ("inv_K")                      for camera intrinsics,
+            "stereo_T"                              for camera extrinsics, and
+            "depth_gt"                              for ground truth depth maps.
+            "box"                                   for using bounding box
+        """
+     
+        
+        # inputs = {}
+        do_flip = self.is_train and random.random() > 0.5
+        
+        if type(self).__name__ in "CityscapeDataset":
+            folder, frame_index, side = self.index_to_folder_and_frame_idx(index)
+            inputs.update(self.get_color(folder, frame_index, side, do_flip))
+
+        elif type(self).__name__ in "NYUDataset" or type(self).__name__ in "Virtual_Kitti":
+            if type(self).__name__ in "NYUDataset":
+                split_com = '/'
+            else:
+                split_com = ' '
+           
+            folder = os.path.join(*self.filenames[index].split(split_com)[:-1])
+            
+            if self.is_train:
+                frame_index = int(self.filenames[index].split(split_com)[-1])
+                side = None
+                inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+            else:
+                frame_index = self.filenames[index].split(split_com)[-1]
+                side= None
+                inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+
+        else:         
+            line = self.filenames[index].split()
+            folder = line[0]
+            frame_index = int(line[1])
+            side = line[2]          
+            
+            # JINLOVESPHO
+            start_idx = frame_index - self.num_prev_frame
+            num_frames = self.num_prev_frame+1  
+                  
+            if start_idx < 0:
+                    num_frames = -start_idx
+                    start_idx=0
+                    print('curr frame index: ', frame_index)        
+                    
+            inputs_lst = []                     
+                        
+            for _ in range(num_frames):
+                # ForkedPdb().set_trace()
+                inputs={}
+                inputs['curr_frame_idx']=start_idx       
+                inputs["color"] = self.get_color(folder, start_idx, side, do_flip)
+                
+                K = self.K.copy()
+                K[0, :] *= self.width 
+                K[1, :] *= self.height
+
+                inv_K = np.linalg.pinv(K)
+
+                inputs["K"] = torch.from_numpy(K)
+                inputs["inv_K"] = torch.from_numpy(inv_K)
+
+                stereo_T = np.eye(4, dtype=np.float32)
+                baseline_sign = -1 if do_flip else 1
+                side_sign = -1 if side == "l" else 1
+                stereo_T[0, 3] = side_sign * baseline_sign * 0.1
+
+                inputs["stereo_T"] = torch.from_numpy(stereo_T)
+                
+                self.preprocess(inputs)
+            
+                if self.load_depth:
+                    depth_gt = self.get_depth(folder, start_idx, side, do_flip)
+                    inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
+                    inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
+
+                inputs_lst.append(inputs)
+                start_idx += 1
+            
+            # ForkedPdb().set_trace()
+            return inputs_lst           # For multiframe kitti dataset 
+          
+        return inputs
+            
+            
+        #     inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+            
+        #     ForkedPdb().set_trace()
+            
+        #     # lst_prev_frame_idx = []
+        #     # lst_prev_frame = []
+        #     # start_frame_idx = frame_index - self.num_prev_frame
+            
+        #     # if start_frame_idx < 0:
+        #     #     pass
+        #     # else:
+        #     #     lst_frames_idx = [i for i in range(start_frame_idx, frame_index+1)]     # prev_frame_idxs + current_frame_idx
+        #     #     lst_frames = [ inputs]
+
+        #     K = self.K.copy()
+        #     K[0, :] *= self.width 
+        #     K[1, :] *= self.height
+
+        #     inv_K = np.linalg.pinv(K)
+
+        #     inputs["K"] = torch.from_numpy(K)
+        #     inputs["inv_K"] = torch.from_numpy(inv_K)
+
+        #     stereo_T = np.eye(4, dtype=np.float32)
+        #     baseline_sign = -1 if do_flip else 1
+        #     side_sign = -1 if side == "l" else 1
+        #     stereo_T[0, 3] = side_sign * baseline_sign * 0.1
+
+        #     inputs["stereo_T"] = torch.from_numpy(stereo_T)
+               
+        # self.preprocess(inputs)
+        
+        # if self.load_depth:
+        #     depth_gt = self.get_depth(folder, frame_index, side, do_flip)
+        #     inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
+        #     inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
+
+            
+        # ForkedPdb().set_trace()
+        # return inputs
