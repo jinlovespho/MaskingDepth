@@ -233,19 +233,15 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
             frame_index = int(line[1])
             side = line[2]          
             
-            # JINLOVESPHO
-            start_idx = frame_index - self.num_prev_frame
-            num_frames = self.num_prev_frame+1  
-                  
-            if start_idx < 0:
-                    num_frames = -start_idx
-                    start_idx=0
-                    print('curr frame index: ', frame_index)        
-                    
-            inputs_lst = []                     
-                        
+            start_idx = frame_index 
+            num_frames = self.num_prev_frame+1
+            inputs_lst = []
+            
+            if start_idx < 5:
+                start_idx = 5 
+                                 
             for _ in range(num_frames):
-                # ForkedPdb().set_trace()
+                # ForkedPdb().set_trace()                
                 inputs={}
                 inputs['curr_folder']=folder
                 inputs['curr_frame']=start_idx       
@@ -275,10 +271,13 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                     inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
 
                 inputs_lst.append(inputs)
-                start_idx += 1
+                
+                start_idx -= 1
+                
+                if start_idx < 5:
+                    start_idx = 5  
             
             # ForkedPdb().set_trace()
-            inputs_lst.reverse()
             return inputs_lst           # For multiframe kitti dataset 
           
         return inputs
