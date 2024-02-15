@@ -2,7 +2,7 @@
 Train:
   wandb : True
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'gpu0_kitti_depth_original_baseline'  # model names to save log file or wandb.
+  model_name: 'cvlab05_gpu0_kitti_depth_original_baseline'  # model names to save log file or wandb.
   log_path: './log/20240215'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
   seed: 41
@@ -34,5 +34,5 @@ Train:
     dataset: 'kitti_depth' #'kitti_depth_multiframe'
     num_prev_frame: 0                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것 
     splits: 'eigen_temp'
-    data_path: '/home/cvlab08/projects/data/KITTI'
+    data_path: '/media/data1/KITTI'
     img_ext: '.jpg'
