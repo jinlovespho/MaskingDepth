@@ -1,0 +1,71 @@
+wandb_version: 1
+
+Train:
+  desc: null
+  value:
+    model_name: pho_model
+    log_path: ./log/20240126
+    use_cuda: true
+    seed: 41
+    start_epoch: 0
+    end_epoch: 50
+    batch_size: 8
+    num_workers: 1
+    lr: 1e-4
+    d_consistency: 0.0
+    f_consistency: 0.0
+    K: 1
+    wandb: true
+    load_optim: false
+    model:
+      baseline: DPT
+      max_depth: 80.0
+      load_weight: false
+      weight_path: ./weight
+      mlp_head: false
+    add_model:
+      uncert: false
+      load_weight: false
+      weight_path: ./weight
+      threshold: 0.7
+    data:
+      height: 192
+      width: 640
+      dataset: kitti_depth
+      num_prev_frame: 0
+      splits: eigen_temp
+      data_path: /home/cvlab08/projects/data/KITTI
+      img_ext: .jpg
+_wandb:
+  desc: null
+  value:
+    python_version: 3.9.18
+    cli_version: 0.16.2
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1707973051.462571
+    t:
+      1:
+      - 1
+      - 41
+      - 49
+      - 51
+      - 55
+      - 63
+      2:
+      - 1
+      - 41
+      - 49
+      - 51
+      - 55
+      - 63
+      3:
+      - 13
+      - 16
+      - 23
+      4: 3.9.18
+      5: 0.16.2
+      8:
+      - 5
+      13: linux-x86_64

@@ -135,7 +135,7 @@ class Masked_DPT(nn.Module):
     def forward(self, img, K = 1):
         # assert mask_ratio >= 0 and mask_ratio < 1, 'masking ratio must be kept between 0 and 1'
 
-        breakpoint()
+        # breakpoint()
         
         # img.shape: (B, 3, 192, 640) = (B,3, 12*16, 40*16) 즉 patch 로 나누면 12개 * 40 개 patch 나온다.
         # patch_size= 16
@@ -211,7 +211,7 @@ class Masked_DPT(nn.Module):
 
         # 이 과정을 왜하는지 이해가 X. 기존 layer_i.shape = (B, 768, 12, 40) 을 왜 다 이상하게 바꾸는거지.
         # transformer 의 output 들을 refinenet 에 넣기 전에 뭔가를 해줄려는 것 같은데 . .
-        breakpoint()
+        # breakpoint()
         layer_1 = self.act_postprocess1[1:](layer_1)    # channels 768 -> 96,  layer_1.shape: (B, 96, 48, 160)
         layer_2 = self.act_postprocess2[1:](layer_2)    # channels 768 -> 192, layer_2.shape: (B, 192, 24, 80)
         layer_3 = self.act_postprocess3[1:](layer_3)    # channels 768 -> 384, layer_3.shape: (B, 384, 12, 40)

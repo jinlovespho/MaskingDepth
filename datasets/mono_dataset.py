@@ -185,7 +185,9 @@ class MonoDataset(data.Dataset):
             frame_index = int(line[1])
             side = line[2]
             inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
-
+            inputs['curr_folder']=folder
+            inputs['curr_frame']=frame_index
+        
             K = self.K.copy()
             K[0, :] *= self.width 
             K[1, :] *= self.height

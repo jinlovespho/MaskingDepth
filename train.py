@@ -67,13 +67,13 @@ if __name__ == "__main__":
         
         if train_cfg.lr_scheduler:
             lr_scheduler = optim.lr_scheduler.StepLR(optimizer, train_cfg.scheduler_step_size, 0.1)
-        breakpoint
+            
         # data loader
         train_loader, val_loader = initialize.data_loader(train_cfg.data, train_cfg.batch_size, train_cfg.num_workers)
                                         
         # set wandb
         if train_cfg.wandb:
-            wandb.init(project = "MaskingDepth",
+            wandb.init(project = train_cfg.wandb_proj_name,
                         name = train_cfg.model_name,
                         config = conf)
         # save configuration (this part activated when do not use wandb)
@@ -118,31 +118,34 @@ if __name__ == "__main__":
                 이거를 어떻게 사용할지는 앞으로 어떤 실험을 돌려야할지 성훈님한테 물어보고 아래에 짜야할 듯 ?
                 
                 '''
-                breakpoint()
+                # breakpoint()
+                
                 # save_image(inputs['color'][0],   f'./{epoch}_{i}_{0}.png')
                 # save_image(inputs['color'][1], f'./{epoch}_{i}_{1}.png')
                 # save_image(inputs['color'][2], f'./{epoch}_{i}_{2}.png')
                 # save_image(inputs['color'][3], f'./{epoch}_{i}_{3}.png')
                 
-                # for key, ipt in inputs.items():
-                #     inputs[key] = ipt.to(device)
-
-                # with torch.cuda.amp.autocast(enabled=True):
-                #     total_loss, losses = loss.compute_loss(inputs, model, train_cfg)
                 
-                # # backward & optimizer
-                # optimizer.zero_grad()
-                # scaler.scale(total_loss).backward()
-                # scaler.step(optimizer)
-                # scaler.update()
+                for key, ipt in inputs.items():
+                    if type(ipt) == torch.Tensor:
+                        inputs[key] = ipt.to(device)
 
-                # if train_cfg.wandb:
-                #     wandb_dict = {"epoch":(epoch+1)}
-                #     wandb_dict.update(losses)
-                #     wandb.log(wandb_dict)
+                with torch.cuda.amp.autocast(enabled=True):
+                    total_loss, losses = loss.compute_loss(inputs, model, train_cfg)
+                
+                # backward & optimizer
+                optimizer.zero_grad()
+                scaler.scale(total_loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
-                # else:
-                #     progress.write(f'(epoch:{epoch+1} / (iter:{i+1})) >> loss:{losses}\n') 
+                if train_cfg.wandb:
+                    wandb_dict = {"epoch":(epoch+1)}
+                    wandb_dict.update(losses)
+                    wandb.log(wandb_dict)
+
+                else:
+                    progress.write(f'(epoch:{epoch+1} / (iter:{i+1})) >> loss:{losses}\n') 
             
             # save model & optimzier (.pth)
             if epoch % 5 == 4:

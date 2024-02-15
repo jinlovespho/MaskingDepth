@@ -1,0 +1,209 @@
+Start Training
+Training progress(ep:1)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 14%|██████████████████▏                                                                                                                   | 392/2894 [06:00<36:31,  1.14it/s]
+Program interrupted. (Use 'cont' to resume).
+> /home/cvlab08/anaconda3/envs/pho/lib/python3.9/threading.py(319)wait()
+-> return gotit
+
+ 14%|██████████████████▏                                                                                                                   | 394/2894 [06:01<34:32,  1.21it/s]
+ 14%|██████████████████▏                                                                                                                   | 394/2894 [06:03<38:29,  1.08it/s]
+Traceback (most recent call last):
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1132, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/queue.py", line 180, in get
+    self.not_empty.wait(remaining)
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/threading.py", line 319, in wait
+    return gotit
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/threading.py", line 319, in wait
+    return gotit
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/bdb.py", line 88, in trace_dispatch
+    return self.dispatch_line(frame)
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/bdb.py", line 113, in dispatch_line
+    if self.quitting: raise BdbQuit
+bdb.BdbQuit
+The above exception was the direct cause of the following exception:
+Traceback (most recent call last):
+  File "/home/cvlab08/projects/jinlovespho/github/monodepth/MaskingDepth/train.py", line 72, in <module>
+    train_loader, val_loader = initialize.data_loader(train_cfg.data, train_cfg.batch_size, train_cfg.num_workers)
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/site-packages/tqdm/std.py", line 1182, in __iter__
+    for obj in iterable:
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 630, in __next__
+    data = self._next_data()
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1328, in _next_data
+    idx, data = self._get_data()
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1284, in _get_data
+    success, data = self._try_get_data()
+  File "/home/cvlab08/anaconda3/envs/pho/lib/python3.9/site-packages/torch/utils/data/dataloader.py", line 1132, in _try_get_data
+    data = self._data_queue.get(timeout=timeout)
+RuntimeError: DataLoader worker (pid(s) 1073688) exited unexpectedly
