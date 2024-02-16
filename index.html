@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="description"
-        content="Diffusion Model for Dense Matching">
+        content="Domain Generalization using Large Pre-Trained Models with Mixture-of-Adapters">
   <meta name="keywords" content="Diffusion, Matching">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Diffusion Model for Dense Matching</title>
+  <title>Domain Generalization using Large Pre-Trained Models with Mixture-of-Adapters</title>
   <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
         rel="stylesheet">
 
@@ -32,23 +32,17 @@
     <div class="container is-max-desktop">
       <div class="columns is-centered">
         <div class="column has-text-centered">
-          <h1 class="title is-1 publication-title">DiffMatch: Diffusion Model for Dense Matching</h1>
+          <h1 class="title is-1 publication-title">Domain Generalization using Large Pre-Trained Models with Mixture-of-Adapters</h1>
           <div class="is-size-5 publication-authors">
-            <span class="author-block">
-              <a href="https://scholar.google.com/citations?hl=ko&user=xakYe8MAAAAJ">Jisu Nam</a>,</span>
             <span class="author-block">
               <a href="https://gseonglee.github.io/">Gyuseong Lee</a>,</span>
             <span class="author-block">
-              <a href="https://github.com/sunwoo76">Sunwoo Kim</a>,
+              <a href="https://scholar.google.com/citations?user=7cyLEQ0AAAAJ&hl=ko">Wooseok Jang</a>,</span>
+            <span class="author-block">
+              <a href="https://github.com/jinlovespho">Jin Hyeon Kim</a>,
             </span>
             <span class="author-block">
-              <a href="https://ines-hyeonsu-kim.github.io">Hyeonsu Kim</a>,
-            </span>
-            <span class="author-block">
-              Hyoungwon Cho</a>,
-            </span>
-            <span class="author-block">
-              Seyeon Kim</a>,
+              <a href="https://scholar.google.com/citations?user=TNhL4AoAAAAJ&hl=ko">Jaewoo Jung</a>,
             </span>
             <span class="author-block">
               <a href="https://cvlab.korea.ac.kr/members/faculty">Seungryong Kim</a>
@@ -61,7 +55,7 @@
           <div class="column has-text-centered">
             <div class="publication-links">
               <span class="link-block">
-                <a href="https://arxiv.org/abs/2305.19094"
+                <a href="https://arxiv.org/abs/2310.11031v1"
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
                       <i class="ai ai-arxiv"></i>
@@ -131,7 +125,7 @@
 
     <div class="columns is-centered has-text-centered">
         <div class="column is-four-fifths">
-          <img width="100%" src="static/images/teaser.png"> <br>
+          <img width="100%" src="static/dg_images/fig2.png"> <br>
           <div style="display: flex; justify-content: center; text-align: center; margin-bottom: 5px;"> 
           <div class="content has-text-justified">
             <p style="font-size: 15px;">
@@ -152,7 +146,7 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p style="font-size: 15px;">
-            The objective for establishing dense correspondence between paired images consists of two terms: a data term and a prior term. While conventional techniques focused on defining hand-designed prior terms, which are difficult to formulate, recent approaches have focused on learning the data term with deep neural networks without explicitly modeling the prior, assuming that the model itself has the capacity to learn an optimal prior from a large-scale dataset. The performance improvement was obvious, however, they often fail to address inherent ambiguities of matching, such as textureless regions, repetitive patterns, large displacements, or noises. To address this, we propose <i>DiffMatch</i>, a novel conditional diffusion-based framework designed to explicitly model both the data and prior terms for dense matching. This is accomplished by leveraging a conditional denoising diffusion model that explicitly takes matching cost and injects the prior within generative process. However, limited resolution of the diffusion model is a major hindrance. We address this with a cascaded pipeline, starting with a low-resolution model, followed by a super-resolution model that successively upsamples and incorporates finer details to the matching field. Our experimental results demonstrate significant performance improvements of our method over existing approaches, and the ablation studies validate our design choices along with the effectiveness of each component.
+            Learning a robust vision model despite large distribution shift is essential for model deployment in real-world settings. Especially, domain generalization (DG) algorithm aims to maintain the performance of a trained model on different distributions which were not seen during training. One of the most effective methods has been leveraging the already learned rich knowledge of large pretrained models. However, naively fine-tuning large models to DG tasks is often practically infeasible due to memory limitations, extensive time requirements for training, and the risk of learned knowledge deterioration. Recently, parameter-efficient fine-tuning (PEFT) methods have been proposed to reduce the high computational cost during training and efficiently adapt large models to downstream tasks. In this work, for the first time, we find that the use of adapters in PEFT methods not only reduce high computational cost during training but also serve as an effective regularizer for DG tasks. Surprisingly, a naive adapter implementation for large models achieve superior performance on common datasets. However, in situations of large distribution shifts, additional factors such as optimal amount of regularization due to the strength of distribution shifts should be considered for a sophisticated adapter implementation. To address this, we propose a mixture-of-expert based adapter fine-tuning method, dubbed as mixture-of-adapters (MoA). Specifically, we employ multiple adapters that have varying capacities, and by using learnable routers, we allocate each token to a proper adapter. By using both PEFT and MoA methods, we effectively alleviate the performance deterioration caused by distribution shifts and achieve state-of-the-art performance on diverse DG benchmarks.
           </p>
         </div>
       </div>
@@ -194,7 +188,7 @@
             </p>
           </div>
 
-          <img style="max-width: 100%;" src="static/images/hp_perturb_final-1.png">
+          <img style="max-width: 100%;" src="static/dg_images/fig7.png">
           <div class="content has-text-justified">
             <p style="font-size: 15px;">
               <strong>Qualitative results on HPatches using corruptions in ImageNet-C:</strong> the source images are warped to the target images using predicted correspondences.
