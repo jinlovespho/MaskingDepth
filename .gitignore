@@ -3,6 +3,9 @@ __pycache__/
 log/
 *.png
 wandb/
+pretrained_weights/
+
+
 
 
 

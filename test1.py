@@ -14,4 +14,5 @@ class NN(nn.Module):
     
 model = NN()
 
+print('mod')
 breakpoint()

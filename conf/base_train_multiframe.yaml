@@ -2,7 +2,7 @@
 Train:
   wandb : True    # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'cvlab05_gpu0_kitti_ViTpre_singleframe_baseline'  # model names to save log file or wandb.
+  model_name: 'cvlab05_gpu3_kitti_ViTpre_multiframe_(t,t-1)_posemb'  # model names to save log file or wandb.
   wandb_log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/wandb/20240215'
   log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/log/20240215'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
@@ -18,7 +18,7 @@ Train:
   load_optim : False
   
   model: 
-    baseline: "DPT"    # ["DPT", "monodepth2", "DPT_Multiframe"]
+    baseline: "DPT_Multiframe"    # ["DPT", "monodepth2", "DPT_Multiframe"]
     max_depth: 80.0    # use 10 for NYU and 80 for KITTI depth
     load_weight : False
     weight_path : './weight'
@@ -32,8 +32,8 @@ Train:
   data:
     height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것 
     width: 640
-    dataset: 'kitti_depth' #'kitti_depth_multiframe'
-    num_prev_frame: 0                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것 
+    dataset: 'kitti_depth_multiframe' #'kitti_depth_multiframe'
+    num_prev_frame: 1                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것 
     splits: 'eigen_temp'
     data_path: '/media/data1/KITTI'
     img_ext: '.jpg'

@@ -150,7 +150,7 @@ def compute_errors(gt, pred):
 def visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb, sample_num=4):
     b = pred_depth.shape[0]
     sample_num = b if b < sample_num else sample_num
-
+    # breakpoint()
     color  = F.interpolate(inputs['color'], inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners=False)
 
     for i in range(sample_num):

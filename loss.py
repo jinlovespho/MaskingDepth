@@ -20,10 +20,10 @@ def compute_loss(inputs, model, train_cfg, mode = TRAIN):
     ### compute supervised loss 
     if train_cfg.data.dataset in ['nyu'] or train_cfg.unlabeled_data.dataset in ['nyu']:
         losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'])
-
+    # 여기 실행 for KITTI 
     else:
-        pred_depth = F.interpolate(pred_depth, inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners = False)
-        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'], (inputs['depth_gt'] > 0).detach())
+        pred_depth = F.interpolate(pred_depth, inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
+        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'], (inputs['depth_gt'] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
     
     ### make uncertainty map
     if 'uncert_decoder' in model.keys():
@@ -66,6 +66,78 @@ def compute_loss(inputs, model, train_cfg, mode = TRAIN):
         return total_loss, losses
     else:
         return total_loss, losses, pred_depth, pred_uncert, pred_depth_mask
+
+
+def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
+    losses = {}
+    total_loss = 0
+    
+    # list 형태로 정리된 time frame들을 dic 형태로 다시 구성
+    inputs_dic={}
+    key_lst = [ key for key in inputs[0].keys() ]
+    for key in key_lst:
+        inputs_dic[key]=[]
+    for input in inputs:
+        for key, val in input.items():
+           inputs_dic[key].append(val)
+    
+    # breakpoint()
+            
+    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'], model)
+    
+    # breakpoint()
+
+    ### compute supervised loss 
+    if train_cfg.data.dataset in ['nyu'] or train_cfg.unlabeled_data.dataset in ['nyu']:
+        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'])
+    # 여기 실행 for KITTI 
+    else:
+        pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
+        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
+    
+    ### make uncertainty map
+    if 'uncert_decoder' in model.keys():
+        pred_uncert = uncert_forward(fusion_features, model)
+        if train_cfg.data.dataset == 'nyu' or train_cfg.unlabeled_data.dataset == 'nyu':
+            losses['uncert_loss'] = compute_uncert_loss(pred_uncert, pred_depth, inputs['depth_gt'])
+        else:
+            pred_uncert = F.interpolate(pred_uncert, inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners = False)
+            losses['uncert_loss'] = compute_uncert_loss(pred_uncert, pred_depth, inputs['depth_gt'], (inputs['depth_gt'] > 0).detach())
+    else: 
+        pred_uncert = None 
+
+    ### compute consistency loss
+    if not(train_cfg.d_consistency == 0) or not(train_cfg.f_consistency == 0):
+        
+        #### make K-way augmented depth map
+        pred_depth_mask, mask_features, _, = model_forward(inputs['color_aug'], model, K = train_cfg.K)
+
+        if not(train_cfg.data.dataset == 'nyu' or train_cfg.unlabeled_data.dataset == 'nyu'):
+            pred_depth_mask = F.interpolate(pred_depth_mask, inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners = False)
+
+        ### consistency loss between weak depth map and strong depth map
+        if not(train_cfg.d_consistency == 0):
+            losses['consistency_loss'] = train_cfg.d_consistency * compute_adaptive_consistency_loss(pred_depth, pred_depth_mask, pred_uncert)
+        if not(train_cfg.f_consistency == 0):
+            losses['feature_consistency_loss'] = train_cfg.f_consistency * compute_feature_consistency_loss(full_features, mask_features, model)
+        
+    else:
+        if mode == EVAL:
+            pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic['color_aug'], model, K = train_cfg.K)
+        else:
+            pred_depth_mask = None
+
+
+    #total_loss
+    for loss in losses.values():
+        total_loss += loss
+    
+    if mode == TRAIN:
+        return total_loss, losses
+    else:
+        return total_loss, losses, pred_depth, pred_uncert, pred_depth_mask
+
+
 
 # total loss(semi)
 def compute_semi_loss(label, unlabel, model, train_cfg, mode = TRAIN):
@@ -125,6 +197,11 @@ def model_forward(inputs, model, K=1):
 def uncert_forward(fusion_features, model):
     pred_uncert = model['uncert_decoder'](fusion_features)
     return pred_uncert
+
+# JINLOVESPHO
+def model_forward_multiframe(inputs, model, K=1):  
+    pred_depth, features, fusion_features = model['depth'](inputs, K)
+    return pred_depth, features, fusion_features
 
 ############################################################################## 
 ########################    loss function set

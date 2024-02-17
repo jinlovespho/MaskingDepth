@@ -6,7 +6,7 @@ from .vit import Transformer
 from .dpt_utils import *
 import random
 
-class Masked_DPT(nn.Module):
+class Masked_DPT_Multiframe(nn.Module):
     def __init__(
         self,
         *,
@@ -17,8 +17,12 @@ class Masked_DPT(nn.Module):
         vit_features=768,
         use_readout="ignore",
         start_index=1,
+        num_prev_frame=None
     ):
         super().__init__()
+        
+        # JINLOVESPHO
+        self.num_prev_frame=num_prev_frame
         
         # ViT
         self.encoder = encoder
@@ -131,28 +135,37 @@ class Masked_DPT(nn.Module):
 
         self.max_depth = max_depth
         self.target_size = encoder.get_image_size()
+        
+        
 
-    def forward(self, img, K = 1):
-        # assert mask_ratio >= 0 and mask_ratio < 1, 'masking ratio must be kept between 0 and 1'
+    def forward(self, img_frames, K = 1):
+        # assert mask_ratio >= 0 and mask_ratio < 1, 'masking ratio must be kept between 0 and 1' 
+        
+        # img_frames 는 리스트 꼴로 [ current_frame, prev_frame, prev2_frame ] 등의 순서로 담겨있다.
+        # 하나의 frame shape=(B, 3, 192, 640)
 
+        # patchify each frames in img_frames
+        tokenized_frames = []
+        for i, frame in enumerate(img_frames):
+            tmp=self.encoder.to_patch_embedding(frame)
+            tmp += self.encoder.pos_emb_lst[i][:,1:,:]
+            tmp = self.encoder.dropout(tmp)
+            tokenized_frames.append(tmp)
+        
+        b,n,_ = tokenized_frames[0].shape       
+        concated_frames_tensor = torch.concat(tokenized_frames, dim=1)       # (B, 960,768) cuz 480*2 개를 concat 했기에 
+    
         # breakpoint()
         
-        # img.shape: (B, 3, 192, 640) = (B,3, 12*16, 40*16) 즉 patch 로 나누면 12개 * 40 개 patch 나온다.
-        # patch_size= 16
-        # 12*40 = 480 이 token 개수 
-        
-        x = self.encoder.to_patch_embedding(img)    # x=(B, 480,768): 480 token, each 768 dim
-        b, n, _ = x.shape
-        x += self.encoder.pos_embedding[:, 1:(n + 1),:]   # cls token 빼고 가져와 O
-        x = self.encoder.dropout(x)
-        
         if K == 1:
-            glob = self.encoder.transformer(x)                  # transformer의 encoder 하나를 전체 통과한 output
+            
+            glob = self.encoder.transformer(concated_frames_tensor)     # 이렇게 한번 encoder.transformer을 통과 시켜야 내부 self.features에 중간 layer output 결과 담긴다
                                                                 # 아래는 transformer.encoder 중간 layer output features. hook=[2,5,8,11] 번째 에서 feat. 뽑기로 설정되어 O
-            layer_1 = self.encoder.transformer.features[0]      # 중간 layer output feature from 2nd layer
-            layer_2 = self.encoder.transformer.features[1]      # 중간 layer output feature from 5th layer
-            layer_3 = self.encoder.transformer.features[2]      # 중간 layer output feature from 8th layer
-            layer_4 = self.encoder.transformer.features[3]      # 중간 layer output feature from 11th layer     # 이게 마지막 layer outputd 이어서 glob랑 똑같네. interesting
+            
+            layer_1 = self.encoder.transformer.features[0][:,0:480,:]      # 중간 layer output feature from 2nd layer
+            layer_2 = self.encoder.transformer.features[1][:,0:480,:]      # 중간 layer output feature from 5th layer
+            layer_3 = self.encoder.transformer.features[2][:,0:480,:]      # 중간 layer output feature from 8th layer
+            layer_4 = self.encoder.transformer.features[3][:,0:480,:]      # 중간 layer output feature from 11th layer     # 이게 마지막 layer outputd 이어서 glob랑 똑같네. interesting
             
             # self.act_postprocess1 구성 => Transpose(), Conv2d(), ConvTranspose2d()
             # self.act_postprocess2 구성 => Transpose(), Conv2d(), ConvTranpose2d()

@@ -26,7 +26,7 @@ class PreNorm(nn.Module):
     def forward(self, x, **kwargs):
         return self.fn(self.norm(x), **kwargs)
 
-class FeedForward(nn.Module):
+class FeedForward_Multiframe(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
         super().__init__()
         self.net = nn.Sequential(
@@ -39,7 +39,7 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-class Attention(nn.Module):
+class Attention_Multiframe(nn.Module):
     def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
@@ -75,14 +75,14 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
 
-class Transformer(nn.Module):
+class Transformer_Multiframe(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                PreNorm(dim, Attention_Multiframe(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward_Multiframe(dim, mlp_dim, dropout = dropout))
             ]))
         self.hooks = []
         self.features = None
@@ -91,7 +91,6 @@ class Transformer(nn.Module):
         self.hooks = hooks
     
     def forward(self, x, mask=None):
-        # breakpoint()
         i = 0
         ll = []
         for attn, ff in self.layers:
@@ -105,18 +104,21 @@ class Transformer(nn.Module):
             if i in self.hooks:     # self.hooks = [2, 5, 8, 11] 즉, transformer i-th block의 output 을 빼온 것. FPN 느낌.
                 ll.append(x)
             i += 1
-        # breakpoint()
+            
         self.features = tuple(ll)
     
         return x
-   
-class ViT(nn.Module):
-    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, hybrid=False, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+    
+    
+class ViT_Multiframe(nn.Module):
+    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, hybrid=False, 
+                 pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., num_prev_frame=None):
         super().__init__()
         image_height, image_width = image_size #pair(image_size)
         patch_height, patch_width = pair(patch_size)
         self.__image_size = image_size
         self.__patch_size = pair(patch_size)
+        self.num_prev_frame=num_prev_frame
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
@@ -138,12 +140,21 @@ class ViT(nn.Module):
                 nn.Linear(patch_dim, dim),
             )
 
-        # breakpoint()
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        
+        # pos embedding for multiframe
+        self.pos_emb_lst = []
+        for i in range(self.num_prev_frame+1):
+            tmp = nn.Parameter(torch.randn(1, self.num_patches + 1, dim))
+            self.pos_emb_lst.append(tmp)
+
+        self.pos_emb_lst = nn.ParameterList(self.pos_emb_lst)
+
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))     # 얘는 이용 X
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer = Transformer_Multiframe(dim, depth, heads, dim_head, mlp_dim, dropout)
 
         self.pool = pool
         self.to_latent = nn.Identity()
@@ -174,24 +185,25 @@ class ViT(nn.Module):
     def get_patch_size(self):
         return self.__patch_size
 
-    def resize_pos_embed(self, h, w, start_index=1):
+    def resize_pos_embed(self, h, w, device):
         self.__image_size = (h,w)           # (h,w) = (192,640)
         pw, ph = self.get_patch_size()      # (pw,ph) = (16,16)
         gs_w = w//pw        # gs_w = num_patch_in_h = 12
         gs_h = h//ph        # gs_h = num_patch_in_w = 40
 
-        posemb_tok, posemb_grid = (
-            self.pos_embedding[:, 0:1, :],
-            self.pos_embedding[:, 1: , :],
-        )
+        for i, pos_emb in enumerate(self.pos_emb_lst):
+            posemb_tok, posemb_grid = (
+                pos_emb[:, 0:1, :],
+                pos_emb[:, 1: , :],
+            )
 
-        gs_old = int(math.sqrt(posemb_grid.shape[1]))
+            gs_old = int(math.sqrt(posemb_grid.shape[1]))
 
-        posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
-        posemb_grid = F.interpolate(posemb_grid, size=(gs_h, gs_w), mode="bilinear")
-        posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, gs_h * gs_w, -1)
+            posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
+            posemb_grid = F.interpolate(posemb_grid, size=(gs_h, gs_w), mode="bilinear")
+            posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, gs_h * gs_w, -1)
+            self.pos_emb_lst[i] = nn.Parameter(torch.cat([posemb_tok, posemb_grid], dim=1)).to(device)          
 
-        self.pos_embedding = nn.Parameter(torch.cat([posemb_tok, posemb_grid], dim=1))
 
 class ResNetV2(nn.Module):
     """Implementation of Pre-activation (v2) ResNet mode.
