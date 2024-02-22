@@ -143,13 +143,14 @@ class ViT_Multiframe(nn.Module):
         
         # pos embedding for multiframe
         self.pos_emb_lst = []
-        for i in range(self.num_prev_frame+1):
+        for _ in range(self.num_prev_frame+1):
             tmp = nn.Parameter(torch.randn(1, self.num_patches + 1, dim))
             self.pos_emb_lst.append(tmp)
 
-        self.pos_emb_lst = nn.ParameterList(self.pos_emb_lst)
+        self.pos_emb_lst = nn.ParameterList(self.pos_emb_lst)    
 
-
+        # input shape: (B,N,D) 일 때 더해주는 cls token 은 신기하게 (B,1,D)가 아닌 (1,1,D)이거를 (B,1,D)로 repeat해준다.
+        # 마찬가지로 pos embedding 또한 (B,N,D)가 아니고 (1,N,D)로 해주고 repeat으로 (B,N,D)로 만들어준다
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))     # 얘는 이용 X
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)

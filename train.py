@@ -44,7 +44,7 @@ if __name__ == "__main__":
         
         # JINLOVESPHO
         train_cfg.model.num_prev_frame=train_cfg.data.num_prev_frame
-        
+
         #model_load
         model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
         model_sub, parameters_to_train_sub = initialize.additional_model_load(train_cfg.add_model, device)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
         step = 0
         print('Start Training')
         for epoch in range(train_cfg.start_epoch, train_cfg.end_epoch):
-            utils.model_mode(model,TRAIN)  
+            # utils.model_mode(model,TRAIN)  
         
             # train
             print(f'Training progress(ep:{epoch+1})')
@@ -104,7 +104,7 @@ if __name__ == "__main__":
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda          
                     with torch.cuda.amp.autocast(enabled=True):
-                        total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg)     
+                        total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
                                 
                 # singleframe train
                 else:
@@ -112,7 +112,7 @@ if __name__ == "__main__":
                         if type(ipt) == torch.Tensor:
                             inputs[key] = ipt.to(device)
                     with torch.cuda.amp.autocast(enabled=True):
-                        total_loss, losses = loss.compute_loss(inputs, model, train_cfg)
+                        total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
                     
                 # backward & optimizer
                 optimizer.zero_grad()

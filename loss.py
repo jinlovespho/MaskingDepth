@@ -83,7 +83,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     
     # breakpoint()
             
-    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'], model)
+    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'], model, train_cfg.K,  mode)
     
     # breakpoint()
 
@@ -199,8 +199,8 @@ def uncert_forward(fusion_features, model):
     return pred_uncert
 
 # JINLOVESPHO
-def model_forward_multiframe(inputs, model, K=1):  
-    pred_depth, features, fusion_features = model['depth'](inputs, K)
+def model_forward_multiframe(inputs, model, K=1, mode=None):  
+    pred_depth, features, fusion_features = model['depth'](inputs, K, mode)
     return pred_depth, features, fusion_features
 
 ############################################################################## 
@@ -222,12 +222,7 @@ def compute_uncert_loss(pred_uncert, pred_depth, gt_depth, mask=None):
     if mask == None:
         loss = (torch.abs(pred_depth.detach() - gt_depth.detach()) * torch.exp(-pred_uncert) + 0.1*pred_uncert).mean()
     else:
-        loss = (torch.abs(pred_depth[mask].detach() - gt_depth[mask].detach()) * torch.exp(-pred_uncert[mask]) + 0.3*pred_uncert[mask]).mean()
-    return loss
-
-def compute_consistency_loss(pred_depth_mask, pred_depth_full):
-    return torch.abs(pred_depth_mask - pred_depth_full.detach()).mean()
-
+        loss = (torch.abs(pred_depth[mask].detach() - gpred_depth))
 def compute_adaptive_consistency_loss(pred_depth_mask, pred_depth_full, pred_uncert):
     if pred_uncert == None:
         return torch.abs(pred_depth_mask - pred_depth_full.detach()).mean()

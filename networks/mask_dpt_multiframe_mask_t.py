@@ -6,7 +6,7 @@ from .vit import Transformer
 from .dpt_utils import *
 import random
 
-class Masked_DPT_Multiframe(nn.Module):
+class Masked_DPT_Multiframe_mask_t(nn.Module):
     def __init__(
         self,
         *,
@@ -17,7 +17,9 @@ class Masked_DPT_Multiframe(nn.Module):
         vit_features=768,
         use_readout="ignore",
         start_index=1,
-        num_prev_frame=None
+        num_prev_frame=None,
+        masking_ratio=0.5,
+        num_frame_to_mask=1
     ):
         super().__init__()
         
@@ -135,13 +137,27 @@ class Masked_DPT_Multiframe(nn.Module):
 
         self.max_depth = max_depth
         self.target_size = encoder.get_image_size()
+        
+        # JINLOVESPHO
+        self.masking_ratio=masking_ratio
+        self.num_frame_to_mask = num_frame_to_mask
+        
+        # mask tokens for each frame 
+        msk_tkn_lst = []
+        for _ in range(self.num_prev_frame+1):
+            tmp = nn.Parameter(torch.randn(vit_features))
+            msk_tkn_lst.append(tmp)
+
+        self.msk_tkn_lst = nn.ParameterList(msk_tkn_lst)
+        
 
     def forward(self, img_frames, K = 1, mode=None):
         # assert mask_ratio >= 0 and mask_ratio < 1, 'masking ratio must be kept between 0 and 1' 
         
         # img_frames 는 리스트 꼴로 [ current_frame, prev_frame, prev2_frame ] 등의 순서로 담겨있다.
-        # 하나의 frame shape=(B, 3, 192, 640)        
-
+        # 하나의 frame shape=(B, 3, 192, 640)
+        
+        
         # patchify each frames in img_frames
         tokenized_frames = []
         for i, frame in enumerate(img_frames):
@@ -151,9 +167,26 @@ class Masked_DPT_Multiframe(nn.Module):
             tokenized_frames.append(tmp)
         
         b,n,_ = tokenized_frames[0].shape       
-        concated_frames_tensor = torch.concat(tokenized_frames, dim=1)       # (B, 960,768) cuz 480*2 개를 concat 했기에 
         
-        breakpoint()
+        # if mode == TRAIN add mask tokens to the input
+        if mode==0 :         
+            # set num_frame_to_msk = 1 to only mask the t frame
+            # set num_frame_to_msk = self.num_prev_frame+1 to mask all frames(t,t-1,t-2, . . .)
+            num_frame_to_msk = self.num_frame_to_mask
+            num_p_msk = int(self.masking_ratio * n )
+            
+            for i in range(num_frame_to_msk):
+                # expand mask_token (1,1,D) to (B,N,D) shape and add positional embedding
+                msk_tkn = repeat(self.msk_tkn_lst[i], 'd -> b n d', b=b, n=n )
+                msk_tkn.data = msk_tkn.clone().detach() + self.encoder.pos_emb_lst[i].data[:,1:,:]
+                
+                # calculate of patches needed to be masked, and get positions (indices) to be masked
+                msk_idx = torch.rand(b, n, device='cuda').topk(k=num_p_msk, dim=-1).indices
+                bool_msk = torch.zeros(b,n,device='cuda').scatter_(dim=-1, index=msk_idx, value=1).bool()
+                tokenized_frames[i] = torch.where(bool_msk[...,None], msk_tkn, tokenized_frames[i])
+    
+        concated_frames_tensor = torch.concat(tokenized_frames, dim=1)       # (B, 960,768) cuz 480*2 개를 concat 했기에
+        
         
         if K == 1:
             glob = self.encoder.transformer(concated_frames_tensor)     # 이렇게 한번 encoder.transformer을 통과 시켜야 내부 self.features에 중간 layer output 결과 담긴다
