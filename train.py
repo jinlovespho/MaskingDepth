@@ -114,6 +114,7 @@ if __name__ == "__main__":
                     with torch.cuda.amp.autocast(enabled=True):
                         total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
                     
+                # breakpoint()
                 # backward & optimizer
                 optimizer.zero_grad()
                 scaler.scale(total_loss).backward()

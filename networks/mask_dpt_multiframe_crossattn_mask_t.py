@@ -6,7 +6,9 @@ from .vit import Transformer
 from .dpt_utils import *
 import random
 
-class Masked_DPT_Multiframe_mask_t(nn.Module):
+from .croco_blocks import *
+
+class Masked_DPT_Multiframe_CrossAttn_mask_t(nn.Module):
     def __init__(
         self,
         *,
@@ -19,7 +21,8 @@ class Masked_DPT_Multiframe_mask_t(nn.Module):
         start_index=1,
         num_prev_frame=None,
         masking_ratio=0.5,
-        num_frame_to_mask=1
+        num_frame_to_mask=1,
+        cross_attn_depth = 8
     ):
         super().__init__()
         
@@ -150,14 +153,17 @@ class Masked_DPT_Multiframe_mask_t(nn.Module):
 
         self.msk_tkn_lst = nn.ParameterList(msk_tkn_lst)
         
+        self.cross_attn_module = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
+        
+    
 
     def forward(self, img_frames, K = 1, mode=None):
         # assert mask_ratio >= 0 and mask_ratio < 1, 'masking ratio must be kept between 0 and 1' 
         
         # img_frames 는 리스트 꼴로 [ current_frame, prev_frame, prev2_frame ] 등의 순서로 담겨있다.
         # 하나의 frame shape=(B, 3, 192, 640)
-        
-        
+          
         # patchify each frames in img_frames
         tokenized_frames = []
         for i, frame in enumerate(img_frames):
@@ -167,7 +173,7 @@ class Masked_DPT_Multiframe_mask_t(nn.Module):
             tokenized_frames.append(tmp)
         
         b,n,_ = tokenized_frames[0].shape       
-        breakpoint()
+        # breakpoint()
         # if mode == TRAIN(0) add mask tokens to the input
         if mode==0 :         
             # set num_frame_to_msk = 1 to only mask the t frame
@@ -184,17 +190,27 @@ class Masked_DPT_Multiframe_mask_t(nn.Module):
                 msk_idx = torch.rand(b, n, device='cuda').topk(k=num_p_msk, dim=-1).indices
                 bool_msk = torch.zeros(b,n,device='cuda').scatter_(dim=-1, index=msk_idx, value=1).bool()
                 tokenized_frames[i] = torch.where(bool_msk[...,None], msk_tkn, tokenized_frames[i])
-
-        concated_frames_tensor = torch.concat(tokenized_frames, dim=1)       # (B, 960,768) cuz 480*2 개를 concat 했기에
+        
+        # concated_frames_tensor = torch.concat(tokenized_frames, dim=1)       # (B, 960,768) cuz 480*2 개를 concat 했기에
         
         if K == 1:
-            glob = self.encoder.transformer(concated_frames_tensor)     # 이렇게 한번 encoder.transformer을 통과 시켜야 내부 self.features에 중간 layer output 결과 담긴다
+            
+            glob2 = self.encoder.transformer(tokenized_frames[1])
+            glob1 = self.encoder.transformer(tokenized_frames[0])   # t-th frame을 마지막에 통과시켜야 아래에 layer_1~layer_4 정보가 t-th frame정보로 채워진다 !!!
+             
+            cross_attn_out = self.cross_attn_module(glob1, glob2) 
+            
+            # glob = self.encoder.transformer(concated_frames_tensor)     # 이렇게 한번 encoder.transformer을 통과 시켜야 내부 self.features에 중간 layer output 결과 담긴다
                                                                 # 아래는 transformer.encoder 중간 layer output features. hook=[2,5,8,11] 번째 에서 feat. 뽑기로 설정되어 O
             
-            layer_1 = self.encoder.transformer.features[0][:,0:480,:]      # 중간 layer output feature from 2nd layer
-            layer_2 = self.encoder.transformer.features[1][:,0:480,:]      # 중간 layer output feature from 5th layer
-            layer_3 = self.encoder.transformer.features[2][:,0:480,:]      # 중간 layer output feature from 8th layer
-            layer_4 = self.encoder.transformer.features[3][:,0:480,:]      # 중간 layer output feature from 11th layer     # 이게 마지막 layer outputd 이어서 glob랑 똑같네. interesting
+            layer_1 = self.encoder.transformer.features[0]      # 중간 layer output feature from 2nd layer
+            layer_2 = self.encoder.transformer.features[1]      # 중간 layer output feature from 5th layer
+            layer_3 = self.encoder.transformer.features[2]      # 중간 layer output feature from 8th layer
+            layer_4 = self.encoder.transformer.features[3]      # 중간 layer output feature from 11th layer     # 이게 마지막 layer outputd 이어서 glob랑 똑같네. interesting
+            
+            layer_4 = layer_4 + cross_attn_out
+            
+            # breakpoint()
             
             # self.act_postprocess1 구성 => Transpose(), Conv2d(), ConvTranspose2d()
             # self.act_postprocess2 구성 => Transpose(), Conv2d(), ConvTranpose2d()

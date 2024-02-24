@@ -119,6 +119,7 @@ class ViT_Multiframe(nn.Module):
         self.__image_size = image_size
         self.__patch_size = pair(patch_size)
         self.num_prev_frame=num_prev_frame
+        self.heads = heads
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
