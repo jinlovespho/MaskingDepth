@@ -169,7 +169,40 @@ def baseline_model_load(model_cfg, device):
                         num_frame_to_mask=model_cfg.num_frame_to_mask,
                         cross_attn_depth = 8
                         )
+    
+    # JINLOVESPHO
+    elif model_cfg.baseline == 'DPT_Multiframe_MultiCrossAttn_mask_t':
+        v = networks.ViT_Multiframe(    image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
+                                        patch_size = 16,
+                                        num_classes = 1000,
+                                        dim = 768,
+                                        depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
+                                        heads = 12,
+                                        mlp_dim = 3072,
+                                        num_prev_frame=model_cfg.num_prev_frame)
         
+        loaded_weight = torch.load("./pretrained_weights/vit_base_384.pth", map_location=device)
+        
+        for key, value in v.state_dict().items():
+            if key not in loaded_weight.keys():
+                loaded_weight[key] = loaded_weight['pos_embedding']
+        
+        v.load_state_dict(loaded_weight)
+        v.resize_pos_embed(192,640,device)     # resize all positional embeddings in ViT_Multiframe class member variables
+
+        breakpoint()
+        model['depth'] = networks.Masked_DPT_Multiframe_MultiCrossAttn_mask_t(encoder=v,
+                        max_depth = model_cfg.max_depth,
+                        features=[96, 192, 384, 768],           # 무슨 feature ?
+                        hooks=[2, 5, 8, 11],                    # hooks ?
+                        vit_features=768,                       # embed dim ? yes!
+                        use_readout='project',
+                        num_prev_frame=model_cfg.num_prev_frame,
+                        masking_ratio=model_cfg.masking_ratio,
+                        num_frame_to_mask=model_cfg.num_frame_to_mask,
+                        cross_attn_depth = model_cfg.cross_attn_depth
+                        )
+       
     else:
         pass
     
