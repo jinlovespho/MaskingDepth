@@ -102,9 +102,13 @@ if __name__ == "__main__":
                     for input in inputs:
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
-                                input[key] = ipt.to(device)     # Place current and previous frames on cuda          
+                                input[key] = ipt.to(device)     # Place current and previous frames on cuda  
+                                      
                     with torch.cuda.amp.autocast(enabled=True):
-                        total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
+                        if train_cfg.model.enable_color_loss:
+                            total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
+                        else:
+                            total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
                                 
                 # singleframe train
                 else:
@@ -114,7 +118,6 @@ if __name__ == "__main__":
                     with torch.cuda.amp.autocast(enabled=True):
                         total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
                     
-                # breakpoint()
                 # backward & optimizer
                 optimizer.zero_grad()
                 scaler.scale(total_loss).backward()
@@ -141,6 +144,9 @@ if __name__ == "__main__":
                 eval_error = []
                 pred_depths = []
                 gt_depths = []
+                # JINLOVESPHO
+                pred_colors = []
+                gt_colors= []
 
                 print(f'Validation progress(ep:{epoch+1})')
                 for i, inputs in enumerate(tqdm(val_loader)):
@@ -154,9 +160,14 @@ if __name__ == "__main__":
                             for key, ipt in input.items():
                                 if type(ipt) == torch.Tensor:
                                     input[key] = ipt.to(device)     # Place current and previous frames on cuda
+                        # breakpoint()
                         with torch.cuda.amp.autocast(enabled=True):
-                            total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
+                            if train_cfg.model.enable_color_loss:
+                                total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
+                            else:
+                                total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                         gt_depth = inputs[0]['depth_gt']
+                        gt_color = inputs[0]['color']
                         
                     # singleframe validation
                     else:
@@ -167,22 +178,31 @@ if __name__ == "__main__":
                             total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
                         gt_depth = inputs['depth_gt']
                 
+                    # breakpoint()
                     eval_loss += total_loss
+                    # pred_depth.squeeze(dim=1)은 tensor 로 (8,H,W) 이고. pred_depths 는 [] 리스트이다.
+                    # pred_depths.extend( pred_depth )를 해주면 pred_depth 의 8개의 이미지들이 차례로 리스트로 들어가서 리스트 len은 개가 돼
+                    # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
                     pred_depths.extend(pred_depth.squeeze(1).cpu().numpy())
-                    gt_depths.extend(list(gt_depth.squeeze(1).cpu().numpy()))
+                    gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
+                    # JINLOVESPHO
+                    pred_colors.extend(pred_color.cpu().numpy())    # 굳이 color에 대해서는 eval metric 돌릴필요 없는듯.
+                    gt_colors.extend(gt_color.cpu().numpy())
 
+                # breakpoint()
                 eval_error = eval_metric(pred_depths, gt_depths, train_cfg)  
                 error_dict = get_eval_dict(eval_error)
                 error_dict["val_loss"] = eval_loss / len(val_loader)                
 
+                # breakpoint()
                 if train_cfg.wandb:
                     error_dict["epoch"] = (epoch+1)
                     wandb.log(error_dict)
                     if train_cfg.data.dataset=='kitti_depth_multiframe':
-                        visualize(inputs[0], pred_depth, pred_depth_mask, pred_uncert, wandb)  
+                        visualize(inputs[0], pred_depth, pred_depth_mask, pred_uncert, wandb) 
                     else:
                         visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb)  
-                                
+                                   
                 else:
                     progress.write(f'########################### (epoch:{epoch+1}) validation ###########################\n') 
                     progress.write(f'{error_dict}\n') 

@@ -146,11 +146,12 @@ def compute_errors(gt, pred):
 
     return silog, log10, abs_rel, sq_rel, rmse, rmse_log, d1, d2, d3
 
+
 # visualize on wandb
 def visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb, sample_num=4):
     b = pred_depth.shape[0]
     sample_num = b if b < sample_num else sample_num
-    # breakpoint()
+
     color  = F.interpolate(inputs['color'], inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners=False)
 
     for i in range(sample_num):
@@ -171,8 +172,8 @@ def visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb, sample_nu
             colormapped_im = (mapper.to_rgba(disp_weak_np)[:, :, :3] * 255).astype(np.uint8)
             disp_img_weak = pil.fromarray(colormapped_im)
 
-            val_depth.append(wandb.Image(img_we, caption="weak_augment"))
-            val_depth.append(wandb.Image(disp_img_weak, caption="weak_depthmap"))
+            val_depth.append(wandb.Image(img_we, caption="Input Image(weak)"))
+            val_depth.append(wandb.Image(disp_img_weak, caption="Pred Depth Image(weak)"))
 
             # gt_depth
             gt_depth = inputs['depth_gt'][i].squeeze().cpu().numpy() 
@@ -182,7 +183,7 @@ def visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb, sample_nu
             colormapped_im = (mapper.to_rgba(gt_depth)[:, :, :3] * 255).astype(np.uint8)
             gt_depth = pil.fromarray(colormapped_im)
 
-            val_depth.append(wandb.Image(gt_depth, caption="gt_depth"))
+            val_depth.append(wandb.Image(gt_depth, caption="GT Depth Image"))
 
         #strong aug 
         if 'color_aug' in inputs:
@@ -198,8 +199,8 @@ def visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb, sample_nu
             colormapped_im = (mapper.to_rgba(disp_strong_np)[:, :, :3] * 255).astype(np.uint8)
             disp_img_strong = pil.fromarray(colormapped_im)
         
-            val_depth.append(wandb.Image(img_st, caption="strong_augment"))
-            val_depth.append(wandb.Image(disp_img_strong, caption="strong_depthmap"))
+            # val_depth.append(wandb.Image(img_st, caption="strong_augment"))
+            # val_depth.append(wandb.Image(disp_img_strong, caption="strong_depthmap"))
         
         wandb_eval_dict["validation depthmap"] = val_depth
 

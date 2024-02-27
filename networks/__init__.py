@@ -5,6 +5,7 @@ from .mask_dpt_multiframe import Masked_DPT_Multiframe
 from .mask_dpt_multiframe_mask_t import Masked_DPT_Multiframe_mask_t
 from .mask_dpt_multiframe_crossattn_mask_t import Masked_DPT_Multiframe_CrossAttn_mask_t
 from .mask_dpt_multiframe_multicrossattn_mask_t import Masked_DPT_Multiframe_MultiCrossAttn_mask_t
+from .mask_dpt_multiframe_multicrossattn_colorloss_mask_t import Masked_DPT_Multiframe_MultiCrossAttn_ColorLoss_mask_t
 from .croco_blocks import *
 from .mlp_head import MLPHead
 from .uncertainty import UncertDecoder
