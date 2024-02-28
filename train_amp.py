@@ -32,7 +32,7 @@ if __name__ == "__main__":
     with open(args.conf, 'r') as f:
         
         ############ mixed precision
-        # scaler = torch.cuda.amp.GradScaler(enabled=True)
+        scaler = torch.cuda.amp.GradScaler(enabled=True)
         
         # configuration & device setting
         conf =  yaml.load(f, Loader=yaml.FullLoader)
@@ -104,11 +104,11 @@ if __name__ == "__main__":
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda  
                                       
-                    # with torch.cuda.amp.autocast(enabled=True):
-                    if train_cfg.model.enable_color_loss:
-                        total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
-                    else:
-                        total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
+                    with torch.cuda.amp.autocast(enabled=True):
+                        if train_cfg.model.enable_color_loss:
+                            total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
+                        else:
+                            total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
                                 
                 # singleframe train
                 else:
@@ -120,12 +120,10 @@ if __name__ == "__main__":
                     
                 # backward & optimizer
                 optimizer.zero_grad()
-                # scaler.scale(total_loss).backward()
-                # scaler.step(optimizer)
-                # scaler.update()
-                total_loss.backward()
-                optimizer.step()
-                
+                scaler.scale(total_loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
                 # wandb logging 
                 if train_cfg.wandb:
                     wandb_dict = {"epoch":(epoch+1)}
@@ -163,12 +161,11 @@ if __name__ == "__main__":
                                 if type(ipt) == torch.Tensor:
                                     input[key] = ipt.to(device)     # Place current and previous frames on cuda
                         # breakpoint()
-                        # with torch.cuda.amp.autocast(enabled=True):
-                        if train_cfg.model.enable_color_loss:
-                            total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
-                        else:
-                            total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
-                            
+                        with torch.cuda.amp.autocast(enabled=True):
+                            if train_cfg.model.enable_color_loss:
+                                total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
+                            else:
+                                total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                         gt_depth = inputs[0]['depth_gt']
                         gt_color = inputs[0]['color']
                         
