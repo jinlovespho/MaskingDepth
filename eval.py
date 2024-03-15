@@ -88,6 +88,8 @@ def eval_metric(pred_depths, gt_depths, data):
     d2 = np.zeros(num_samples, np.float32)
     d3 = np.zeros(num_samples, np.float32)
     
+    # breakpoint()
+
     for i in range(num_samples):
 
         gt_depth = gt_depths[i]
@@ -124,6 +126,7 @@ def eval_metric(pred_depths, gt_depths, data):
     return abs_rel, sq_rel, rms, log_rms, d1, d2, d3
 
 def compute_errors(gt, pred):
+    # breakpoint()
     thresh = np.maximum((gt / pred), (pred / gt))
     d1 = (thresh < 1.25).mean()
     d2 = (thresh < 1.25 ** 2).mean()

@@ -252,6 +252,7 @@ class SSIM(nn.Module):
 def compute_depth_errors(gt, pred):
     """Computation of error metrics between predicted and ground truth depths
     """
+    # breakpoint()
     thresh = torch.max((gt / pred), (pred / gt))
     a1 = (thresh < 1.25     ).float().mean()
     a2 = (thresh < 1.25 ** 2).float().mean()

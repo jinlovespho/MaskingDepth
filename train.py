@@ -91,7 +91,7 @@ if __name__ == "__main__":
         step = 0
         print('Start Training')
         for epoch in range(train_cfg.start_epoch, train_cfg.end_epoch):
-            # utils.model_mode(model,TRAIN)  
+            utils.model_mode(model,TRAIN)  
         
             # train
             print(f'Training progress(ep:{epoch+1})')
@@ -103,7 +103,7 @@ if __name__ == "__main__":
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda  
-                                      
+                            
                     # with torch.cuda.amp.autocast(enabled=True):
                     if train_cfg.model.enable_color_loss:
                         total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
@@ -115,9 +115,9 @@ if __name__ == "__main__":
                     for key, ipt in inputs.items():
                         if type(ipt) == torch.Tensor:
                             inputs[key] = ipt.to(device)
-                    with torch.cuda.amp.autocast(enabled=True):
-                        total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
-                    
+                    # with torch.cuda.amp.autocast(enabled=True):
+                    total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
+                
                 # backward & optimizer
                 optimizer.zero_grad()
                 # scaler.scale(total_loss).backward()
@@ -177,8 +177,8 @@ if __name__ == "__main__":
                         for key, ipt in inputs.items():
                             if type(ipt) == torch.Tensor:
                                 inputs[key] = ipt.to(device)
-                        with torch.cuda.amp.autocast(enabled=True):
-                            total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
+                        # with torch.cuda.amp.autocast(enabled=True):
+                        total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
                         gt_depth = inputs['depth_gt']
                 
                     # breakpoint()
@@ -189,8 +189,8 @@ if __name__ == "__main__":
                     pred_depths.extend(pred_depth.squeeze(1).cpu().numpy())
                     gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
                     # JINLOVESPHO
-                    pred_colors.extend(pred_color.cpu().numpy())    # 굳이 color에 대해서는 eval metric 돌릴필요 없는듯.
-                    gt_colors.extend(gt_color.cpu().numpy())
+                    # pred_colors.extend(pred_color.cpu().numpy())    # 굳이 color에 대해서는 eval metric 돌릴필요 없는듯.
+                    # gt_colors.extend(gt_color.cpu().numpy())
 
                 # breakpoint()
                 eval_error = eval_metric(pred_depths, gt_depths, train_cfg)  

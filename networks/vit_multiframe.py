@@ -167,6 +167,7 @@ class ViT_Multiframe(nn.Module):
         )
 
     def forward(self, img):
+        breakpoint()
         x = self.to_patch_embedding(img)
         b, n, _ = x.shape
 
