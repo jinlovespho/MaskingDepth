@@ -30,11 +30,6 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
     with open(args.conf, 'r') as f:
-        
-        ############ mixed precision
-        # scaler = torch.cuda.amp.GradScaler(enabled=True)
-        
-        # configuration & device setting
         conf =  yaml.load(f, Loader=yaml.FullLoader)
         train_cfg = DotMap(conf['Train'])
         device = torch.device("cuda" if train_cfg.use_cuda else "cpu")
@@ -47,8 +42,7 @@ if __name__ == "__main__":
 
         #model_load
         model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
-        model_sub, parameters_to_train_sub = initialize.additional_model_load(train_cfg.add_model, device)
-        model.update(model_sub)     # 파이썬 내장 dictionary function
+        model.update(model_sub)
         parameters_to_train += parameters_to_train_sub
 
         #optimizer & scheduler
@@ -96,21 +90,17 @@ if __name__ == "__main__":
             # train
             print(f'Training progress(ep:{epoch+1})')
             for i, inputs in enumerate(tqdm(train_loader)): 
-
-                # multiframe train
                 if train_cfg.data.dataset=='kitti_depth_multiframe':
                     for input in inputs:
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda  
                             
-                    # with torch.cuda.amp.autocast(enabled=True):
                     if train_cfg.model.enable_color_loss:
                         total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
                     else:
                         total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
                                 
-                # singleframe train
                 else:
                     for key, ipt in inputs.items():
                         if type(ipt) == torch.Tensor:
@@ -162,8 +152,7 @@ if __name__ == "__main__":
                             for key, ipt in input.items():
                                 if type(ipt) == torch.Tensor:
                                     input[key] = ipt.to(device)     # Place current and previous frames on cuda
-                        # breakpoint()
-                        # with torch.cuda.amp.autocast(enabled=True):
+
                         if train_cfg.model.enable_color_loss:
                             total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
                         else:
