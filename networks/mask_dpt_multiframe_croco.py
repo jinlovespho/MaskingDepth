@@ -5,6 +5,7 @@ from einops import repeat
 from .vit import Transformer
 from .dpt_utils import *
 import random
+import numpy as np
 
 from .croco_blocks import *
 
@@ -152,7 +153,8 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.msk_tkn4 = nn.Parameter(torch.randn(vit_features))
 
 
-        self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
+        # self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
+        self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
         self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
@@ -197,8 +199,8 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk)
         msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk)
 
-        pos_msk_tkns = self.mask_pe_table(idx_msk)
-        pos_umsk_tkns = self.mask_pe_table(idx_umsk)
+        # pos_msk_tkns = self.mask_pe_table(idx_msk)
+        # pos_umsk_tkns = self.mask_pe_table(idx_umsk)
         
         # add positional embedding for masked tokens
         
@@ -219,20 +221,28 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
 
 
         frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)
-        frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1 + pos_umsk_tkns
-        frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1 + pos_msk_tkns
+        frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
+        frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1
+        frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed
+        glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
         
         frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)
-        frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2 + pos_umsk_tkns
-        frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2 + pos_msk_tkns
+        frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
+        frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2
+        frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed
+        glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
         
         frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)
-        frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 + pos_umsk_tkns
-        frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3 + pos_msk_tkns
-        
+        frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
+        frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
+        frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed
+        glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
+
         frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)
-        frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4 + pos_umsk_tkns
-        frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4 + pos_msk_tkns
+        frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
+        frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4
+        frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
+        glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
 
         cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1) 
         cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2)
@@ -270,7 +280,6 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         if layer_4.ndim == 3:
             layer_4 = self.unflatten(layer_4)       # (B,768,12,40)
 
-        # breakpoint()
         # 여기는 refinenet에 넣기 위해 여러 scale로 만들어 O
         layer_1 = self.act_postprocess1[1:](layer_1)    # channels 768 -> 96,  layer_1.shape: (B, 96, 48, 160) = (B,  C,    H,   W) 로 생각하면 이제 이해 O
         layer_2 = self.act_postprocess2[1:](layer_2)    # channels 768 -> 192, layer_2.shape: (B, 192, 24, 80) = (B, 2C, 1/2H, 1/2W)
@@ -285,7 +294,6 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         
         fusion_features = [layer_1_rn, layer_2_rn, layer_3_rn, layer_4_rn]
 
-        # breakpoint()
 
         # 여기가 refinenet 논문에 나오는 refinenet 이다.
         path_4 = self.scratch.refinenet4(layer_4_rn)
@@ -328,3 +336,51 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         )
         self.target_size = (h,w)
         
+
+def get_2d_sincos_pos_embed(embed_dim, height,width, n_cls_token=0):
+    """
+    grid_size: int of the grid height and width
+    return:
+    pos_embed: [grid_size*grid_size, embed_dim] or [n_cls_token+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    """
+    grid_h = np.arange(height, dtype=np.float32)
+    grid_w = np.arange(width, dtype=np.float32)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)
+
+    grid = grid.reshape([2, 1, height, width])
+    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
+    if n_cls_token>0:
+        pos_embed = np.concatenate([np.zeros([n_cls_token, embed_dim]), pos_embed], axis=0)
+    return pos_embed
+
+
+def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    assert embed_dim % 2 == 0
+
+    # use half of dimensions to encode grid_h
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
+
+    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
+    return emb
+
+def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
+    """
+    embed_dim: output dimension for each position
+    pos: a list of positions to be encoded: size (M,)
+    out: (M, D)
+    """
+    assert embed_dim % 2 == 0
+    omega = np.arange(embed_dim // 2, dtype=float)
+    omega /= embed_dim / 2.
+    omega = 1. / 10000**omega  # (D/2,)
+
+    pos = pos.reshape(-1)  # (M,)
+    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
+
+    emb_sin = np.sin(out) # (M, D/2)
+    emb_cos = np.cos(out) # (M, D/2)
+
+    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    return emb
