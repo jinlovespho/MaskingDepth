@@ -84,7 +84,7 @@ def baseline_model_load(model_cfg, device):
                                         mlp_dim = 3072,
                                         num_prev_frame=model_cfg.num_prev_frame)
         
-        loaded_weight = torch.load("./pretrained_weights/vit_base_384.pth", map_location=device)
+        loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
         
         for key, value in v.state_dict().items():
             if key not in loaded_weight.keys():

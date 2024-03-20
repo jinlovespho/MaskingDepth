@@ -123,6 +123,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     for input in inputs:
         for key, val in input.items():
            inputs_dic[key].append(val)
+
     
     pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'], model, train_cfg.K,  mode)
     

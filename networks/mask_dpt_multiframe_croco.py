@@ -146,7 +146,12 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.num_frame_to_mask = num_frame_to_mask
         
         # only make one mask token 
-        self.msk_tkn = nn.Parameter(torch.randn(vit_features))
+        self.msk_tkn1 = nn.Parameter(torch.randn(vit_features))
+        self.msk_tkn2 = nn.Parameter(torch.randn(vit_features))
+        self.msk_tkn3 = nn.Parameter(torch.randn(vit_features))
+        self.msk_tkn4 = nn.Parameter(torch.randn(vit_features))
+
+
         self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
         
         self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
@@ -164,7 +169,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []
         for i, frame in enumerate(img_frames):
-            tmp=self.encoder.to_patch_embedding(frame)
+            tmp =self.encoder.to_patch_embedding(frame)
             tmp += self.encoder.pos_emb_lst[i][:,1:,:]
             tmp = self.encoder.dropout(tmp)
             tokenized_frames.append(tmp)
@@ -187,118 +192,63 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
 
         # masked tokens
-        msk_tkns = repeat(self.msk_tkn, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk)
+
         pos_msk_tkns = self.mask_pe_table(idx_msk)
         pos_umsk_tkns = self.mask_pe_table(idx_umsk)
         
         # add positional embedding for masked tokens
-        msk_tkns = msk_tkns + pos_msk_tkns
         
-        # add positional embedding for frame0
-        # frame0_msk_tkn = frame0_msk_tkn + 생각해보니까 이미 frame0_tkn 에 pos embedding이 더해져 O
         
-        if K == 1:
-            
-            # t frame encoder
-            glob1 = self.encoder.transformer(frame0_unmsk_tkn)   
-            glob1_layer_1 = self.encoder.transformer.features[0]      
-            glob1_layer_2 = self.encoder.transformer.features[1]      
-            glob1_layer_3 = self.encoder.transformer.features[2]      
-            glob1_layer_4 = self.encoder.transformer.features[3]      
-                     
-            # t-1 frame encoder
-            glob2 = self.encoder.transformer(tokenized_frames[1])     
-            glob2_layer_1 = self.encoder.transformer.features[0]      
-            glob2_layer_2 = self.encoder.transformer.features[1]      
-            glob2_layer_3 = self.encoder.transformer.features[2]      
-            glob2_layer_4 = self.encoder.transformer.features[3]      
+        # t frame encoder
+        glob1 = self.encoder.transformer(frame0_unmsk_tkn)   
+        glob1_layer_1 = self.encoder.transformer.features[0]      
+        glob1_layer_2 = self.encoder.transformer.features[1]      
+        glob1_layer_3 = self.encoder.transformer.features[2]      
+        glob1_layer_4 = self.encoder.transformer.features[3]      
+                    
+        # t-1 frame encoder
+        glob2 = self.encoder.transformer(tokenized_frames[1])     
+        glob2_layer_1 = self.encoder.transformer.features[0]      
+        glob2_layer_2 = self.encoder.transformer.features[1]      
+        glob2_layer_3 = self.encoder.transformer.features[2]      
+        glob2_layer_4 = self.encoder.transformer.features[3]      
 
 
+        frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)
+        frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1 + pos_umsk_tkns
+        frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1 + pos_msk_tkns
+        
+        frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)
+        frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2 + pos_umsk_tkns
+        frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2 + pos_msk_tkns
+        
+        frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)
+        frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 + pos_umsk_tkns
+        frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3 + pos_msk_tkns
+        
+        frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)
+        frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4 + pos_umsk_tkns
+        frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4 + pos_msk_tkns
 
-
-            # # GPU 1!!!!!!!!!
-            # # concat the output of t frame encoder + masked tokens
-            # frame0_msk_umsk_tkn = torch.zeros(b, n, dim, device=device)
-            # frame0_msk_umsk_tkn[idx_bs, idx_umsk] = glob1_layer_4
-            # frame0_msk_umsk_tkn[idx_bs, idx_msk] = msk_tkns 
-            
-            # cross_attn_out4 = self.cross_attn_module4(frame0_msk_umsk_tkn, glob2_layer_4)
-            
-            # # JINLOVESPHO
-            # layer_1 = cross_attn_out4
-            # layer_2 = cross_attn_out4
-            # layer_3 = cross_attn_out4
-            # layer_4 = cross_attn_out4
-            
-            
-            # GPU 2 !!!!!!!!!1
-            # concat the output of t frame encoder + masked tokens
-            frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)
-            frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
-            frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns 
-            
-            frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)
-            frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
-            frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns
-            
-            frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)
-            frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3
-            frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns
-            
-            frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)
-            frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
-            frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns
-
-            cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1) 
-            cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2)
-            cross_attn_out3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3)
-            cross_attn_out4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4)
-                        
-            # JINLOVESPHO
-            layer_1 = cross_attn_out1
-            layer_2 = cross_attn_out2
-            layer_3 = cross_attn_out3
-            layer_4 = cross_attn_out4
-            
-            
-            
-            
-            # self.act_postprocess1 구성 => Transpose(), Conv2d(), ConvTranspose2d()
-            # self.act_postprocess2 구성 => Transpose(), Conv2d(), ConvTranpose2d()
-            # self.act_postprocess3 구성 => Tranpose(), Conv2d()
-            # self.act_postprocess4 구성 => Tranpose(), Conv2d(), Conv2d()
-            # 이렇게 하는 이유: transformer 의 output features (B,480,768) 을 이제 "CNN" decoder에 넣어야하기에 다시 img 꼴로 reshape 해줘야 O
-            # CNN 이 받는 input img shape은 (C,H,W) 이기에, embed_dim은 C해당하므로, 768을 앞으로 가져오고 480을 뒤로 보내는 것. 이해 O
-            
-            layer_1 = self.act_postprocess1[0](layer_1)     # 모두 index[0] 이므로, Tranpose() 통과 의미.
-            layer_2 = self.act_postprocess2[0](layer_2)     # 즉 모두(B, 480, 768) -> Transpose -> (B, 768, 480) 된다.
-            layer_3 = self.act_postprocess3[0](layer_3)
-            layer_4 = self.act_postprocess4[0](layer_4)
-
-        else:
-            num_patches = (self.target_size[0] // self.encoder.get_patch_size()[0]) * \
-                          (self.target_size[1] // self.encoder.get_patch_size()[1])
-            batch_range = torch.arange(b, device = x.device)[:, None]
-            rand_indices = torch.rand(b, num_patches, device = x.device).argsort(dim = -1)
-
-            ### random shuffle the patches
-            x = x[batch_range,rand_indices]
-           
-            ### assign mask
-            v = sorted([random.randint(1,num_patches-1) for i in range(int(K-1))] + [0, num_patches])
-            mask_v = torch.zeros(len(v[:-1]), num_patches).to(x.device)
-            for i in range(len(v[:-1])):
-                mask_v[i, v[i]:v[i+1]] = 1.0
-
-            ### K-way augmented attention
-            partial_token = self.encoder.transformer(x, (mask_v.transpose(0,1) @ mask_v))
-            reform_indices = torch.argsort(rand_indices, dim=1)
-
-            #no class
-            layer_1 = self.act_postprocess1[0](self.encoder.transformer.features[0][batch_range, reform_indices])
-            layer_2 = self.act_postprocess2[0](self.encoder.transformer.features[1][batch_range, reform_indices])
-            layer_3 = self.act_postprocess3[0](self.encoder.transformer.features[2][batch_range, reform_indices])
-            layer_4 = self.act_postprocess4[0](self.encoder.transformer.features[3][batch_range, reform_indices])
+        cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1) 
+        cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2)
+        cross_attn_out3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3)
+        cross_attn_out4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4)
+                    
+        # JINLOVESPHO
+        layer_1 = cross_attn_out1
+        layer_2 = cross_attn_out2
+        layer_3 = cross_attn_out3
+        layer_4 = cross_attn_out4
+        
+        layer_1 = self.act_postprocess1[0](layer_1)     # 모두 index[0] 이므로, Tranpose() 통과 의미.
+        layer_2 = self.act_postprocess2[0](layer_2)     # 즉 모두(B, 480, 768) -> Transpose -> (B, 768, 480) 된다.
+        layer_3 = self.act_postprocess3[0](layer_3)
+        layer_4 = self.act_postprocess4[0](layer_4)
 
 
         # transformer encoder transposed outputs (intermediate ouputs 포함 O)

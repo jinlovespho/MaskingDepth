@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CUDA=2
+CUDA=3
 CONFIG_PATH="./conf/base_train_multiframe_croco.yaml"
 
 

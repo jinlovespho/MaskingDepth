@@ -42,8 +42,6 @@ if __name__ == "__main__":
 
         #model_load
         model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
-        model.update(model_sub)
-        parameters_to_train += parameters_to_train_sub
 
         #optimizer & scheduler
         encode_index = len(list(model['depth'].module.encoder.parameters()))
