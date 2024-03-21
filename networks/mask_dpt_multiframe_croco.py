@@ -165,16 +165,21 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.cross_attn_module4 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
         
+        self.position_getter = PositionGetter()
+        
     
     def forward(self, img_frames, K = 1, mode=None):
-
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []
+        poses = []
         for i, frame in enumerate(img_frames):
             tmp =self.encoder.to_patch_embedding(frame)
-            tmp += self.encoder.pos_emb_lst[i][:,1:,:]
+            if not self.encoder.croco:
+                tmp += self.encoder.pos_emb_lst[i][:,1:,:]
             tmp = self.encoder.dropout(tmp)
             tokenized_frames.append(tmp)
+
+            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16, frame.device))
         
         # batch_size, length, dim, device
         b,n,dim = tokenized_frames[0].shape
@@ -192,6 +197,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
+        poses0_unmsk_tkn = poses[0][idx_bs, idx_umsk]
 
         # masked tokens
         msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)
@@ -206,14 +212,14 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         
         
         # t frame encoder
-        glob1 = self.encoder.transformer(frame0_unmsk_tkn)   
+        glob1 = self.encoder.transformer(frame0_unmsk_tkn,poses0_unmsk_tkn)   
         glob1_layer_1 = self.encoder.transformer.features[0]      
         glob1_layer_2 = self.encoder.transformer.features[1]      
         glob1_layer_3 = self.encoder.transformer.features[2]      
         glob1_layer_4 = self.encoder.transformer.features[3]      
                     
         # t-1 frame encoder
-        glob2 = self.encoder.transformer(tokenized_frames[1])     
+        glob2 = self.encoder.transformer(tokenized_frames[1],poses[1])     
         glob2_layer_1 = self.encoder.transformer.features[0]      
         glob2_layer_2 = self.encoder.transformer.features[1]      
         glob2_layer_3 = self.encoder.transformer.features[2]      
@@ -223,31 +229,39 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
         frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1
-        frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed
-        glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
+
+        if not self.encoder.croco:
+            frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed
+            glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
         
         frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
         frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2
-        frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed
-        glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
+
+        if not self.encoder.croco:
+            frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed
+            glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
         
         frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
         frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
-        frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed
-        glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
+
+        if not self.encoder.croco:
+            frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed
+            glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
 
         frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
         frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4
-        frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
-        glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
 
-        cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1) 
-        cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2)
-        cross_attn_out3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3)
-        cross_attn_out4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4)
+        if not self.encoder.croco:
+            frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
+            glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
+
+        cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) 
+        cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
+        cross_attn_out3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
+        cross_attn_out4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
                     
         # JINLOVESPHO
         layer_1 = cross_attn_out1
@@ -359,10 +373,10 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
 
     # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
-    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
+    emb = np.concatenate([emb_w, emb_h], axis=1) # (H*W, D)
     return emb
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
@@ -384,3 +398,17 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+class PositionGetter(object):
+    """ return positions of patches """
+
+    def __init__(self):
+        self.cache_positions = {}
+        
+    def __call__(self, b, h, w, device):
+        if not (h,w) in self.cache_positions:
+            x = torch.arange(w, device=device)
+            y = torch.arange(h, device=device)
+            self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
+        pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
+        return pos

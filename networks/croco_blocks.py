@@ -205,9 +205,9 @@ class CrossAttention_Module(nn.Module):
         self.cross_attn_norm = norm_layer(ca_dim)
         
         
-    def forward(self, x, y):
+    def forward(self, x, y, xpos=None, ypos=None):
         for ca_block in self.cross_attn_blks:
-            x, y = ca_block(x, y)
+            x, y = ca_block(x, y,xpos, ypos)
         x = self.cross_attn_norm(x)
         return x
      

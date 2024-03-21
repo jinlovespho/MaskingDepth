@@ -9,6 +9,7 @@ import numpy as np
 import datasets
 import networks
 import utils
+from einops import rearrange
 
 FULL  = 0
 FRONT = 1
@@ -82,13 +83,41 @@ def baseline_model_load(model_cfg, device):
                                         depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
                                         heads = 12,
                                         mlp_dim = 3072,
-                                        num_prev_frame=model_cfg.num_prev_frame)
+                                        num_prev_frame=model_cfg.num_prev_frame,
+                                        croco = (model_cfg.pretrained_weight == 'croco'))
         
-        loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
+        if model_cfg.pretrained_weight == 'croco':
+            croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+            loaded_weight = {}
+
+            for key, value in v.state_dict().items():
+                if 'transformer' in key:
+                    if '0.norm' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm1.{key.split(".")[-1]}']
+                    elif 'qkv' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.qkv.{key.split(".")[-1]}']
+                    elif 'to_out' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.proj.{key.split(".")[-1]}']
+                    elif '1.norm' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm2.{key.split(".")[-1]}']
+                    elif 'fn.net.0' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc1.{key.split(".")[-1]}']
+                    elif 'fn.net.3' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc2.{key.split(".")[-1]}']
+                    
+                elif 'to_patch_embedding' in key:
+                    loaded_weight[key] = croco_weight['model'][f'patch_embed.proj.{key.split(".")[-1]}']
+
+                else:
+                    print(key)
+                    loaded_weight[key] = v.state_dict()[key]
+
+        else:
+            loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
         
-        for key, value in v.state_dict().items():
-            if key not in loaded_weight.keys():
-                loaded_weight[key] = loaded_weight['pos_embedding']
+            for key, value in v.state_dict().items():
+                if key not in loaded_weight.keys():
+                    loaded_weight[key] = loaded_weight['pos_embedding']
         
         v.load_state_dict(loaded_weight)
         v.resize_pos_embed(192,640,device)

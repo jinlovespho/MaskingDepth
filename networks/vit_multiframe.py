@@ -40,7 +40,7 @@ class FeedForward_Multiframe(nn.Module):
         return self.net(x)
 
 class Attention_Multiframe(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0., rope = None):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
@@ -57,10 +57,15 @@ class Attention_Multiframe(nn.Module):
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
+        self.rope = rope
 
-    def forward(self, x, mask=None):
+    def forward(self, x, poses=None, mask=None):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+
+        if self.rope is not None:
+            q = self.rope(q, poses)
+            k = self.rope(k, poses)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         
@@ -76,12 +81,12 @@ class Attention_Multiframe(nn.Module):
         return self.to_out(out)
 
 class Transformer_Multiframe(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., rope = None):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, Attention_Multiframe(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, Attention_Multiframe(dim, heads = heads, dim_head = dim_head, dropout = dropout, rope = rope)),
                 PreNorm(dim, FeedForward_Multiframe(dim, mlp_dim, dropout = dropout))
             ]))
         self.hooks = []
@@ -90,13 +95,13 @@ class Transformer_Multiframe(nn.Module):
     def set_hooks(self, hooks):
         self.hooks = hooks
     
-    def forward(self, x, mask=None):
+    def forward(self, x, poses= None, mask=None):
         i = 0
         ll = []
         for attn, ff in self.layers:
             # if mask == None or i in self.hooks[-1]:
             if mask == None:
-                x = attn(x) + x     # transformer residual connection 반영 O
+                x = attn(x, poses = poses) + x     # transformer residual connection 반영 O
             else:
                 x = attn.fn(attn.norm(x),mask) + x
 
@@ -112,7 +117,7 @@ class Transformer_Multiframe(nn.Module):
     
 class ViT_Multiframe(nn.Module):
     def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, hybrid=False, 
-                 pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., num_prev_frame=None):
+                 pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., num_prev_frame=None, croco=False):
         super().__init__()
         image_height, image_width = image_size #pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -120,6 +125,7 @@ class ViT_Multiframe(nn.Module):
         self.__patch_size = pair(patch_size)
         self.num_prev_frame=num_prev_frame
         self.heads = heads
+        self.croco = croco
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
@@ -128,6 +134,11 @@ class ViT_Multiframe(nn.Module):
         self.num_patches=num_patches
         self.dim=dim
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+
+        if croco:
+            self.rope = RoPE2D(freq=100)
+        else:
+            self.rope = None
         
         if hybrid:
             backbone = ResNetV2(
@@ -135,6 +146,11 @@ class ViT_Multiframe(nn.Module):
                 preact=False, stem_type='same')
             self.to_patch_embedding = HybridEmbed(
                     backbone, img_size=image_size, in_chans=channels, embed_dim=dim)
+        elif croco:
+            self.to_patch_embedding = nn.Sequential(
+                nn.Conv2d(3, 768, kernel_size=16, stride=16),
+                Rearrange('b c h w -> b (h w) c')
+            )
         else:
             self.to_patch_embedding = nn.Sequential(
                 Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
@@ -154,7 +170,7 @@ class ViT_Multiframe(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.transformer = Transformer_Multiframe(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer = Transformer_Multiframe(dim, depth, heads, dim_head, mlp_dim, dropout, rope=self.rope)
 
         self.pool = pool
         self.to_latent = nn.Identity()
@@ -333,3 +349,59 @@ class ResNetStage(nn.Module):
         x = self.blocks(x)
         self.features = x
         return x
+    
+
+try:
+    from networks.curope import cuRoPE2D
+    RoPE2D = cuRoPE2D
+except ImportError:
+    print('Warning, cannot find cuda-compiled version of RoPE2D, using a slow pytorch version instead')
+
+    class RoPE2D(torch.nn.Module):
+        
+        def __init__(self, freq=100.0, F0=1.0):
+            super().__init__()
+            self.base = freq 
+            self.F0 = F0
+            self.cache = {}
+
+        def get_cos_sin(self, D, seq_len, device, dtype):
+            if (D,seq_len,device,dtype) not in self.cache:
+                inv_freq = 1.0 / (self.base ** (torch.arange(0, D, 2).float().to(device) / D))
+                t = torch.arange(seq_len, device=device, dtype=inv_freq.dtype)
+                freqs = torch.einsum("i,j->ij", t, inv_freq).to(dtype)
+                freqs = torch.cat((freqs, freqs), dim=-1)
+                cos = freqs.cos() # (Seq, Dim)
+                sin = freqs.sin()
+                self.cache[D,seq_len,device,dtype] = (cos,sin)
+            return self.cache[D,seq_len,device,dtype]
+            
+        @staticmethod
+        def rotate_half(x):
+            x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
+            return torch.cat((-x2, x1), dim=-1)
+            
+        def apply_rope1d(self, tokens, pos1d, cos, sin):
+            assert pos1d.ndim==2
+            cos = torch.nn.functional.embedding(pos1d, cos)[:, None, :, :]
+            sin = torch.nn.functional.embedding(pos1d, sin)[:, None, :, :]
+            return (tokens * cos) + (self.rotate_half(tokens) * sin)
+            
+        def forward(self, tokens, positions):
+            """
+            input:
+                * tokens: batch_size x nheads x ntokens x dim
+                * positions: batch_size x ntokens x 2 (y and x position of each token)
+            output:
+                * tokens after appplying RoPE2D (batch_size x nheads x ntokens x dim)
+            """
+            assert tokens.size(3)%2==0, "number of dimensions should be a multiple of two"
+            D = tokens.size(3) // 2
+            assert positions.ndim==3 and positions.shape[-1] == 2 # Batch, Seq, 2
+            cos, sin = self.get_cos_sin(D, int(positions.max())+1, tokens.device, tokens.dtype)
+            # split features into two along the feature dimension, and apply rope1d on each half
+            y, x = tokens.chunk(2, dim=-1)
+            y = self.apply_rope1d(y, positions[:,:,0], cos, sin)
+            x = self.apply_rope1d(x, positions[:,:,1], cos, sin)
+            tokens = torch.cat((y, x), dim=-1)
+            return tokens
