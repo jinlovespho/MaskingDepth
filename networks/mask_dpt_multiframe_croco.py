@@ -7,6 +7,7 @@ from .dpt_utils import *
 import random
 import numpy as np
 
+
 from .croco_blocks import *
 
 class Masked_DPT_Multiframe_Croco(nn.Module):
@@ -23,7 +24,8 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         num_prev_frame=1,
         masking_ratio=0.5,
         num_frame_to_mask=1,
-        cross_attn_depth = 8
+        cross_attn_depth = 8,
+        croco = None
     ):
         super().__init__()
         
@@ -152,18 +154,21 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.msk_tkn3 = nn.Parameter(torch.randn(vit_features))
         self.msk_tkn4 = nn.Parameter(torch.randn(vit_features))
 
-
+        if croco is not None:
+            self.rope = RoPE2D(freq=100)
+        else:
+            self.rope = None
         # self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
         self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
         self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         self.cross_attn_module2 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         self.cross_attn_module3 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         self.cross_attn_module4 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=None)
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         
         self.position_getter = PositionGetter()
         
@@ -412,3 +417,59 @@ class PositionGetter(object):
             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
         return pos
+    
+
+try:
+    from networks.curope import cuRoPE2D
+    RoPE2D = cuRoPE2D
+except ImportError:
+    print('Warning, cannot find cuda-compiled version of RoPE2D, using a slow pytorch version instead')
+
+    class RoPE2D(torch.nn.Module):
+        
+        def __init__(self, freq=100.0, F0=1.0):
+            super().__init__()
+            self.base = freq 
+            self.F0 = F0
+            self.cache = {}
+
+        def get_cos_sin(self, D, seq_len, device, dtype):
+            if (D,seq_len,device,dtype) not in self.cache:
+                inv_freq = 1.0 / (self.base ** (torch.arange(0, D, 2).float().to(device) / D))
+                t = torch.arange(seq_len, device=device, dtype=inv_freq.dtype)
+                freqs = torch.einsum("i,j->ij", t, inv_freq).to(dtype)
+                freqs = torch.cat((freqs, freqs), dim=-1)
+                cos = freqs.cos() # (Seq, Dim)
+                sin = freqs.sin()
+                self.cache[D,seq_len,device,dtype] = (cos,sin)
+            return self.cache[D,seq_len,device,dtype]
+            
+        @staticmethod
+        def rotate_half(x):
+            x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
+            return torch.cat((-x2, x1), dim=-1)
+            
+        def apply_rope1d(self, tokens, pos1d, cos, sin):
+            assert pos1d.ndim==2
+            cos = torch.nn.functional.embedding(pos1d, cos)[:, None, :, :]
+            sin = torch.nn.functional.embedding(pos1d, sin)[:, None, :, :]
+            return (tokens * cos) + (self.rotate_half(tokens) * sin)
+            
+        def forward(self, tokens, positions):
+            """
+            input:
+                * tokens: batch_size x nheads x ntokens x dim
+                * positions: batch_size x ntokens x 2 (y and x position of each token)
+            output:
+                * tokens after appplying RoPE2D (batch_size x nheads x ntokens x dim)
+            """
+            assert tokens.size(3)%2==0, "number of dimensions should be a multiple of two"
+            D = tokens.size(3) // 2
+            assert positions.ndim==3 and positions.shape[-1] == 2 # Batch, Seq, 2
+            cos, sin = self.get_cos_sin(D, int(positions.max())+1, tokens.device, tokens.dtype)
+            # split features into two along the feature dimension, and apply rope1d on each half
+            y, x = tokens.chunk(2, dim=-1)
+            y = self.apply_rope1d(y, positions[:,:,0], cos, sin)
+            x = self.apply_rope1d(x, positions[:,:,1], cos, sin)
+            tokens = torch.cat((y, x), dim=-1)
+            return tokens

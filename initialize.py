@@ -131,7 +131,8 @@ def baseline_model_load(model_cfg, device):
                         num_prev_frame=model_cfg.num_prev_frame,
                         masking_ratio=model_cfg.masking_ratio,
                         num_frame_to_mask=model_cfg.num_frame_to_mask,
-                        cross_attn_depth = model_cfg.cross_attn_depth
+                        cross_attn_depth = model_cfg.cross_attn_depth,
+                        croco = (model_cfg.pretrained_weight == 'croco')
                         )
     else:
         pass
