@@ -167,6 +167,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
         losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'])
     # 여기 실행 for KITTI 
     else:
+        breakpoint()
         pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
         losses['sup_loss'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
     

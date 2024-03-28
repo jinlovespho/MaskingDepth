@@ -89,7 +89,7 @@ if __name__ == "__main__":
                 
         
         step = 0
-        print('Start Training')
+        print('Start Training and validation')
         for epoch in range(train_cfg.start_epoch, train_cfg.end_epoch):
             utils.model_mode(model,TRAIN)  
         
@@ -136,7 +136,7 @@ if __name__ == "__main__":
                     progress.write(f'(epoch:{epoch+1} / (iter:{i+1})) >> loss:{losses}\n') 
             
             # save model & optimzier (.pth)
-            if epoch % 5 == 4:
+            if epoch % 25 == 24:
                 utils.save_component(train_cfg.log_path, train_cfg.model_name, epoch, model, optimizer)
 
             #validation
@@ -171,6 +171,7 @@ if __name__ == "__main__":
                             
                         gt_depth = inputs[0]['depth_gt']
                         gt_color = inputs[0]['color']
+                        breakpoint()
                         
                     # singleframe validation
                     else:
@@ -186,6 +187,7 @@ if __name__ == "__main__":
                     # pred_depth.squeeze(dim=1)은 tensor 로 (8,H,W) 이고. pred_depths 는 [] 리스트이다.
                     # pred_depths.extend( pred_depth )를 해주면 pred_depth 의 8개의 이미지들이 차례로 리스트로 들어가서 리스트 len은 개가 돼
                     # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
+                    # 즉 batch를 풀어서 넣어주는 것
                     pred_depths.extend(pred_depth.squeeze(1).cpu().numpy())
                     gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
                     # JINLOVESPHO
@@ -197,7 +199,7 @@ if __name__ == "__main__":
                 error_dict = get_eval_dict(eval_error)
                 error_dict["val_loss"] = eval_loss / len(val_loader)                
 
-                # breakpoint()
+                breakpoint()
                 if train_cfg.wandb:
                     error_dict["epoch"] = (epoch+1)
                     wandb.log(error_dict)

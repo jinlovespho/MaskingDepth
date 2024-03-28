@@ -109,12 +109,18 @@ def eval_metric(pred_depths, gt_depths, data):
         gt_height, gt_width = gt_depth.shape
         eval_mask = np.zeros(valid_mask.shape)
 
+        
         if data.dataset == 'nyu':
             eval_mask[45:471, 41:601] = 1
         else:
             eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1
 
         valid_mask = np.logical_and(valid_mask, eval_mask)
+        
+        # Dust3r scaling 맞춰주기
+        # scale = np.median(gt_depth[valid_mask]) / np.median(pred_depth[valid_mask])
+        # pred_depth *= scale
+        
         silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth[valid_mask], pred_depth[valid_mask])
     
     print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
