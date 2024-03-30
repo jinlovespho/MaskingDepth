@@ -167,7 +167,8 @@ class CrossAttention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B, Nq, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        return x
+        
+        return x, attn
 
 # JINLOVESPHO
 class CrossAttention_Block(nn.Module):
@@ -190,9 +191,12 @@ class CrossAttention_Block(nn.Module):
     def forward(self, x, y, xpos=None, ypos=None): 
         x = x + self.drop_path(self.attn(self.norm1(x), xpos))
         y_ = self.norm_y(y)
-        x = x + self.drop_path(self.cross_attn(self.norm2(x), y_, y_, xpos, ypos))
+        
+        tmp, c_attn_map = self.cross_attn(self.norm2(x), y_, y_, xpos, ypos)
+        x = x + self.drop_path(tmp)
         x = x + self.drop_path(self.mlp(self.norm3(x)))
-        return x, y
+        
+        return x, y, c_attn_map
 
 # JINLOVESPHO
 class CrossAttention_Module(nn.Module):
@@ -204,12 +208,14 @@ class CrossAttention_Module(nn.Module):
                                                                         drop_path, act_layer, norm_layer, norm_mem, rope) for _ in range(ca_depth)])
         self.cross_attn_norm = norm_layer(ca_dim)
         
-        
     def forward(self, x, y, xpos=None, ypos=None):
+        c_attn_maps=[]
         for ca_block in self.cross_attn_blks:
-            x, y = ca_block(x, y,xpos, ypos)
+            x, y, c_attn_map = ca_block(x, y,xpos, ypos)
+            c_attn_maps.append(c_attn_map)
         x = self.cross_attn_norm(x)
-        return x
+        
+        return x, c_attn_maps
      
             
 

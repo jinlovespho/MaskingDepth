@@ -174,11 +174,37 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         
         self.position_getter = PositionGetter()
+        
+        # self.c_attn_map1 = []
+        # self.c_attn_map2 = []
+        # self.c_attn_map3 = []
+        # self.c_attn_map4 = []
+        
+        # # set hooks to obtain cross attention maps
+        # for name, module in self.cross_attn_module1.named_modules():
+        #     if 'cross_attn.attn_drop' in name:    
+        #         # c_attn_map1.append(name)
+        #         module.register_forward_hook(lambda m,i,o: self.c_attn_map1.append(o) )    
+                   
+        # for name, module in self.cross_attn_module2.named_modules():
+        #     if 'cross_attn.attn_drop' in name:    
+        #         # c_attn_map2.append(name)
+        #         module.register_forward_hook(lambda m,i,o: self.c_attn_map2.append(o) ) 
+                
+        # for name, module in self.cross_attn_module3.named_modules():
+        #     if 'cross_attn.attn_drop' in name:    
+        #         # c_attn_map3.append(name)   
+        #         module.register_forward_hook(lambda m,i,o: self.c_attn_map3.append(o) ) 
+                
+        # for name, module in self.cross_attn_module4.named_modules():
+        #     if 'cross_attn.attn_drop' in name:    
+        #         # c_attn_map4.append(name)
+        #         module.register_forward_hook(lambda m,i,o: self.c_attn_map4.append(o) ) 
                 
         # JINLOVESPHO
         self.fuse_cross_attn_module1 = Fuse_Cross_Attn_Module1(concat_dim=480+768, out_dim=768)
-        self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=480, out_dim=768)
-        self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)
+        # self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=480, out_dim=768)
+        # self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)
         
     
     def forward(self, img_frames, K = 1, mode=None):
@@ -271,56 +297,55 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
             glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
            
         # JINLOVESPHO
-        # c_attn_map1 = []
-        # c_attn_map2 = []
-        # c_attn_map3 = []
-        # c_attn_map4 = []
+        c_attn_map1 = []
+        c_attn_map2 = []
+        c_attn_map3 = []
+        c_attn_map4 = []
         
-        # # set hooks to obtain cross attention maps
-        # for name, module in self.cross_attn_module1.named_modules():
-        #     if 'cross_attn.attn_drop' in name:    
-        #         # tmp.append(name)
-        #         module.register_forward_hook(lambda m,i,o: c_attn_map1.append(o.detach().cpu()) )    
+        # set hooks to obtain cross attention maps
+        for name, module in self.cross_attn_module1.named_modules():
+            if 'cross_attn.attn_drop' in name:    
+                # tmp.append(name)
+                module.register_forward_hook(lambda m,i,o: c_attn_map1.append(o.detach().cpu()) )    
                    
-        # for name, module in self.cross_attn_module2.named_modules():
-        #     if 'cross_attn.attn_drop' in name:    
-        #         # c_attn_map2.append(name)
-        #         module.register_forward_hook(lambda m,i,o: c_attn_map2.append(o.detach().cpu()) ) 
+        for name, module in self.cross_attn_module2.named_modules():
+            if 'cross_attn.attn_drop' in name:    
+                # c_attn_map2.append(name)
+                module.register_forward_hook(lambda m,i,o: c_attn_map2.append(o.detach().cpu()) ) 
                 
-        # for name, module in self.cross_attn_module3.named_modules():
-        #     if 'cross_attn.attn_drop' in name:    
-        #         # c_attn_map3.append(name)   
-        #         module.register_forward_hook(lambda m,i,o: c_attn_map3.append(o.detach().cpu()) ) 
+        for name, module in self.cross_attn_module3.named_modules():
+            if 'cross_attn.attn_drop' in name:    
+                # c_attn_map3.append(name)   
+                module.register_forward_hook(lambda m,i,o: c_attn_map3.append(o.detach().cpu()) ) 
                 
-        # for name, module in self.cross_attn_module4.named_modules():
-        #     if 'cross_attn.attn_drop' in name:    
-        #         # c_attn_map4.append(name)
-        #         module.register_forward_hook(lambda m,i,o: c_attn_map4.append(o.detach().cpu()) ) 
+        for name, module in self.cross_attn_module4.named_modules():
+            if 'cross_attn.attn_drop' in name:    
+                # c_attn_map4.append(name)
+                module.register_forward_hook(lambda m,i,o: c_attn_map4.append(o.detach().cpu()) ) 
             
         # breakpoint()
         # cross attention output
-        cross_attn_out1, c_attn_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1])      # (b,480,768)
-        cross_attn_out2, c_attn_map2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
-        cross_attn_out3, c_attn_map3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
-        cross_attn_out4, c_attn_map4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
+        cross_attn_out1, _ = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1])      # (b,480,768)
+        cross_attn_out2, _ = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
+        cross_attn_out3, _ = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
+        cross_attn_out4, _ = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
         
         # Attention Rollout
         discard_ratio=0.0
         head_fusion='mean'
-        c_attn_map1_rollout = self.rollout(c_attn_map1, discard_ratio, head_fusion, self.device)    # (b,480,480)
-        c_attn_map2_rollout = self.rollout(c_attn_map2, discard_ratio, head_fusion, self.device)
-        c_attn_map3_rollout = self.rollout(c_attn_map3, discard_ratio, head_fusion, self.device)
-        c_attn_map4_rollout = self.rollout(c_attn_map4, discard_ratio, head_fusion, self.device)
+        # c_attn_map1_rollout = self.rollout(c_attn_map1, discard_ratio, head_fusion, self.device)    # (b,480,480)
+        # c_attn_map2_rollout = self.rollout(c_attn_map2, discard_ratio, head_fusion, self.device)
+        # c_attn_map3_rollout = self.rollout(c_attn_map3, discard_ratio, head_fusion, self.device)
+        # c_attn_map4_rollout = self.rollout(c_attn_map4, discard_ratio, head_fusion, self.device)
+        
+        # # breakpoint()
+        # c_attn_map1_rollout = c_attn_map1_rollout.detach()      # (b,480,480)
+        # c_attn_map2_rollout = c_attn_map2_rollout.detach()
+        # c_attn_map3_rollout = c_attn_map3_rollout.detach()
+        # c_attn_map4_rollout = c_attn_map4_rollout.detach()
         
         # breakpoint()
-        c_attn_map1_rollout = c_attn_map1_rollout.detach()      # (b,480,480)
-        c_attn_map2_rollout = c_attn_map2_rollout.detach()
-        c_attn_map3_rollout = c_attn_map3_rollout.detach()
-        c_attn_map4_rollout = c_attn_map4_rollout.detach()
-        
-        
-        # breakpoint()
-        # # WAY1 - concat 
+        # WAY1 - concat 
         # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module1( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
         #                                                                    c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
         
@@ -328,16 +353,16 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module2( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
         #                                                                    c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
         
-        # WAY3 - onlt c_attn_out linear 
-        layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module3( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
-                                                                           c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
+        # # WAY3 - onlt c_attn_out linear 
+        # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module3( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
+        #                                                                    c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
     
     
         # JINLOVESPHO
-        # layer_1 = cross_attn_out1
-        # layer_2 = cross_attn_out2
-        # layer_3 = cross_attn_out3
-        # layer_4 = cross_attn_out4
+        layer_1 = cross_attn_out1
+        layer_2 = cross_attn_out2
+        layer_3 = cross_attn_out3
+        layer_4 = cross_attn_out4
         
         layer_1 = self.act_postprocess1[0](layer_1)     # 모두 index[0] 이므로, Tranpose() 통과 의미.
         layer_2 = self.act_postprocess2[0](layer_2)     # 즉 모두(B, 480, 768) -> Transpose -> (B, 768, 480) 된다.
@@ -397,6 +422,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         result = torch.eye(attentions[0].size(-1)).to(device)
         with torch.no_grad():
             for attention in attentions:
+                attention = attention.to(device)
                 if head_fusion == "mean":                                   # attention (b,3,197,197)
                     attention_heads_fused = attention.mean(axis=1)          # attention_heads_fuse (b,197,197)
                 elif head_fusion == "max":
@@ -420,7 +446,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
                 
                 result = torch.matmul(a, result)      
                  
-            return result
+                return result
     
     
     def resize_image_size(self, h, w, start_index=1):
