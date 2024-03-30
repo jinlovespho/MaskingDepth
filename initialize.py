@@ -122,6 +122,7 @@ def baseline_model_load(model_cfg, device):
         v.load_state_dict(loaded_weight)
         v.resize_pos_embed(192,640,device)
 
+        breakpoint()
         model['depth'] = networks.Masked_DPT_Multiframe_Croco(encoder=v,
                         max_depth = model_cfg.max_depth,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
@@ -132,7 +133,7 @@ def baseline_model_load(model_cfg, device):
                         masking_ratio=model_cfg.masking_ratio,
                         num_frame_to_mask=model_cfg.num_frame_to_mask,
                         cross_attn_depth = model_cfg.cross_attn_depth,
-                        croco = (model_cfg.pretrained_weight == 'croco')
+                        croco = (model_cfg.pretrained_weight == 'croco'),
                         )
     else:
         pass
