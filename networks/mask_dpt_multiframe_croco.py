@@ -269,7 +269,6 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
         frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
 
-        import pdb;pdb.set_trace()
 
         if not self.rope:
             if self.args.learnable_decoder_posembedding:
