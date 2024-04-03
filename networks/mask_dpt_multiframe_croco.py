@@ -16,6 +16,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         *,
         encoder,
         max_depth,
+        args = None,
         features=[96, 192, 384, 768],
         hooks=[2, 5, 8, 11],
         vit_features=768,
@@ -25,12 +26,13 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         masking_ratio=0.5,
         num_frame_to_mask=1,
         cross_attn_depth = 8,
-        croco = None
+        croco = None,
     ):
         super().__init__()
         
         # JINLOVESPHO
         self.num_prev_frame=num_prev_frame
+        self.args= args
         
         # ViT
         self.encoder = encoder
@@ -159,8 +161,16 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         else:
             self.rope = None
         # self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
-        self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
+        if self.args.learnable_decoder_posembedding:
+            pose_shape = get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0).shape
+            self.decoder_pose_embed1 = nn.Parameter(torch.randn(pose_shape), requires_grad=True)
+            self.decoder_pose_embed2 = nn.Parameter(torch.randn(pose_shape), requires_grad=True)
+            self.rope = None
+        else:
+            self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
+
+
         self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         self.cross_attn_module2 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
@@ -235,33 +245,51 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
         frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1
 
-        if not self.encoder.croco:
-            frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed
-            glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
+        if not self.rope:
+            if self.args.learnable_decoder_posembedding:
+                frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed1
+                glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed2
+            else:
+                frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed
+                glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
         
         frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
         frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2
 
-        if not self.encoder.croco:
-            frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed
-            glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
+        if not self.rope:
+            if self.args.learnable_decoder_posembedding:
+                frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed1
+                glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed2
+            else:
+                frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed
+                glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
         
         frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
         frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
 
-        if not self.encoder.croco:
-            frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed
-            glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
+        import pdb;pdb.set_trace()
+
+        if not self.rope:
+            if self.args.learnable_decoder_posembedding:
+                frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed1
+                glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed2
+            else:
+                frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed
+                glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
 
         frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)
         frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
         frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4
 
-        if not self.encoder.croco:
-            frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
-            glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
+        if not self.rope:
+            if self.args.learnable_decoder_posembedding:
+                frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed1
+                glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed2
+            else:
+                frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
+                glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
 
         cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) 
         cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
@@ -473,3 +501,39 @@ except ImportError:
             x = self.apply_rope1d(x, positions[:,:,1], cos, sin)
             tokens = torch.cat((y, x), dim=-1)
             return tokens
+        
+
+def rollout(attentions, discard_ratio, head_fusion):
+    result = torch.eye(attentions[0].size(-1))
+    with torch.no_grad():
+        for attention in attentions:
+            if head_fusion == "mean":
+                attention_heads_fused = attention.mean(axis=1)
+            elif head_fusion == "max":
+                attention_heads_fused = attention.max(axis=1)[0]
+            elif head_fusion == "min":
+                attention_heads_fused = attention.min(axis=1)[0]
+            else:
+                raise "Attention head fusion type Not supported"
+
+            # Drop the lowest attentions, but
+            # don't drop the class token
+            flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
+            _, indices = flat.topk(int(flat.size(-1)*discard_ratio), -1, False)
+            indices = indices[indices != 0]
+            flat[0, indices] = 0
+
+            I = torch.eye(attention_heads_fused.size(-1))
+            a = (attention_heads_fused + 1.0*I)/2
+            a = a / a.sum(dim=-1)
+
+            result = torch.matmul(a, result)
+    
+    # Look at the total attention between the class token,
+    # and the image patches
+    mask = result[0, 0 , 1 :]
+    # In case of 224x224 image, this brings us from 196 to 14
+    width = int(mask.size(-1)**0.5)
+    mask = mask.reshape(width, width).numpy()
+    mask = mask / np.max(mask)
+    return mask

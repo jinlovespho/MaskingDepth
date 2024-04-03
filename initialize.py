@@ -48,6 +48,7 @@ def baseline_model_load(model_cfg, device):
 
         model['depth'] = networks.Masked_DPT(encoder=v,
                         max_depth = model_cfg.max_depth,
+                        args = model_cfg,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
                         hooks=[2, 5, 8, 11],                    # hooks ?
                         vit_features=768,                       # embed dim ? yes!
@@ -124,6 +125,7 @@ def baseline_model_load(model_cfg, device):
 
         model['depth'] = networks.Masked_DPT_Multiframe_Croco(encoder=v,
                         max_depth = model_cfg.max_depth,
+                        args = model_cfg,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
                         hooks=[2, 5, 8, 11],                    # hooks ?
                         vit_features=768,                       # embed dim ? yes!
