@@ -123,10 +123,13 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     for input in inputs:
         for key, val in input.items():
            inputs_dic[key].append(val)
+        inputs_dic['prev_depth']=[]
+        inputs_dic['prev_depth'].append(torch.zeros_like(inputs[1]['prev_depth']))
+        inputs_dic['prev_depth'].append(inputs[1]['prev_depth'])
 
     
-    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'], model, train_cfg.K,  mode)
-    
+    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'],inputs_dic['prev_depth'], inputs_dic['start'], model, train_cfg.K,  mode)
+    # pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'],None,inputs_dic['start'], model, train_cfg.K,  mode)
 
     pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
     losses['sup_loss'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
@@ -134,7 +137,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     pred_uncert = None 
 
     if mode == EVAL:
-        pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic['color_aug'], model, K = train_cfg.K)
+        pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic['color_aug'],inputs_dic['prev_depth'],inputs_dic['start'], model, K = train_cfg.K, mode=mode)
     else:
         pred_depth_mask = None
 
@@ -161,8 +164,8 @@ def model_forward_multiframe_colorLoss(inputs, model, K=1, mode=None):
     return pred_depth, pred_color, features, fusion_features
 
 # JINLOVESPHO
-def model_forward_multiframe(inputs, model, K=1, mode=None):  
-    pred_depth, features, fusion_features = model['depth'](inputs, K, mode)
+def model_forward_multiframe(inputs, depth, start, model, K=1, mode=None):  
+    pred_depth, features, fusion_features = model['depth'](inputs,depth,start, K, mode)
     return pred_depth, features, fusion_features
 
 

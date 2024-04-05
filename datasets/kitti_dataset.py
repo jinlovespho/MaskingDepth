@@ -18,6 +18,8 @@ from .mono_dataset import MonoDataset
 
 import sys
 import pdb
+import imageio
+import cv2
 
 class ForkedPdb(pdb.Pdb):
     """A Pdb subclass that may be used
@@ -185,6 +187,24 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
 
         return depth_gt
     
+    def prev_depth(self, folder, frame_index, side, do_flip = False):
+        f_str = "{:010d}.png".format(frame_index)
+        depth_path = os.path.join(
+            self.data_path,
+            folder,
+            "depth",
+            f_str)
+        prev_depth = imageio.imread(depth_path)
+        prev_depth = np.array(prev_depth).astype(np.float32) / 100
+        ## resize prev_depth using cv2
+        prev_depth = cv2.resize(prev_depth, (self.width, self.height), interpolation=cv2.INTER_LINEAR)
+        
+        
+        if do_flip:
+            prev_depth = np.fliplr(prev_depth)
+            
+        return prev_depth
+    
     
     def __getitem__(self, index):
         """Returns a single training item from the dataset as a dictionary.
@@ -240,7 +260,7 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
             if start_idx < 5:
                 start_idx = 5 
                                  
-            for _ in range(num_frames):
+            for i in range(num_frames):
                 # ForkedPdb().set_trace()                
                 inputs={}
                 inputs['curr_folder']=folder
@@ -269,13 +289,20 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                     depth_gt = self.get_depth(folder, start_idx, side, do_flip)
                     inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
                     inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
+                
+                if i !=0:
+                    inputs['prev_depth'] = self.prev_depth(folder, start_idx, side, do_flip)
+                    inputs['prev_depth'] = torch.from_numpy(inputs['prev_depth'].astype(np.float32))
 
                 inputs_lst.append(inputs)
                 
                 start_idx -= 1
                 
                 if start_idx < 5:
+                    inputs['start'] = True
                     start_idx = 5  
+                else:
+                    inputs['start'] = False
             
             # ForkedPdb().set_trace()
             return inputs_lst           # For multiframe kitti dataset 

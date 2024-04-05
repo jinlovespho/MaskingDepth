@@ -1,6 +1,6 @@
 ##### Supervised Training ######
 Train:
-  wandb : False  # log with wandb
+  wandb : True  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
   model_name: 'hg_learnable_poseemb_mask06_crossattention_re'  # model names to save log file or wandb.
   wandb_log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/wandb/20240215'
@@ -22,11 +22,10 @@ Train:
     cross_attn_depth: 4
     enable_color_loss: False       # True for COLOR LOSS 
     max_depth: 80.0    # use 10 for NYU and 80 for KITTI depth
-    load_weight : False
-    weight_path : './weight'
+    load_weight : True
+    weight_path : '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/log/20240215/hg_learnable_poseemb_mask06_crossattention_re/weights_50'
     pretrained_weight : 'croco'
     learnable_decoder_posembedding: True
-    use_prev_depth: 'add'
 
   data:
     height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것, 원래 이미지 사이즈: (375,1242)

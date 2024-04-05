@@ -14,6 +14,9 @@ import loss
 from eval import visualize, eval_metric, get_eval_dict
 
 from torchvision.utils import save_image
+import torchvision
+import numpy as np
+import imageio
 
 
 TRAIN = 0
@@ -64,16 +67,10 @@ if __name__ == "__main__":
         # data loader
         train_loader, val_loader = initialize.data_loader(train_cfg.data, train_cfg.batch_size, train_cfg.num_workers)
                                         
-        # set wandb
-
-        save_config_folder = os.path.join(train_cfg.log_path, train_cfg.model_name)
-        if not os.path.exists(save_config_folder):
-            os.makedirs(save_config_folder)
-        with open(save_config_folder + '/config.yaml', 'w') as f:
-            yaml.dump(conf, f)
-        progress = open(save_config_folder + '/progress.txt', 'w')
                 
-        
+        fpath = os.path.join(os.path.dirname(__file__), "splits", train_cfg.data.splits, "{}_files.txt")
+
+        train_filenames = utils.readlines(fpath.format("val"))
 
         #validation
         with torch.no_grad():
@@ -122,6 +119,14 @@ if __name__ == "__main__":
                 # pred_depth.squeeze(dim=1)은 tensor 로 (8,H,W) 이고. pred_depths 는 [] 리스트이다.
                 # pred_depths.extend( pred_depth )를 해주면 pred_depth 의 8개의 이미지들이 차례로 리스트로 들어가서 리스트 len은 개가 돼
                 # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
+                lines = train_filenames[i].split()
+                
+                f_str = "{:010d}{}".format(int(lines[1])-1, '.png')
+                depth_save_path = os.path.join(train_cfg.data.data_path, lines[0],'depth',f_str)
+                ## make dir if not exist
+                os.makedirs(os.path.dirname(depth_save_path), exist_ok=True)
+                imageio.imwrite(depth_save_path, (pred_depth.squeeze().cpu().numpy()*100).astype(np.uint16))
+                
                 pred_depths.extend(pred_depth.squeeze(1).cpu().numpy())
                 gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
 

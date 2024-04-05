@@ -11,6 +11,13 @@ import networks
 import utils
 from einops import rearrange
 
+import imageio.core.util
+
+
+
+
+
+
 FULL  = 0
 FRONT = 1
 BACK  = 2
@@ -26,6 +33,10 @@ def seed_everything(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     print(f"seed : {seed}")
+    
+    def silence_imageio_warning(*args, **kwargs):
+        pass
+    imageio.core.util._precision_warn = silence_imageio_warning
 
 ############################################################################## 
 ########################    model load

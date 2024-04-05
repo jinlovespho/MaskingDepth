@@ -6,6 +6,7 @@ from .vit import Transformer
 from .dpt_utils import *
 import random
 import numpy as np
+from einops.layers.torch import Rearrange
 
 
 from .croco_blocks import *
@@ -41,6 +42,8 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
 
         #read out processing (ignore / add / project[dpt use this process])
         readout_oper = get_readout_oper(vit_features, features, use_readout, start_index)
+        
+        self.use_prev_depth = args.use_prev_depth
 
         # 32, 48, 136, 384
         self.act_postprocess1 = nn.Sequential(
@@ -169,7 +172,11 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         else:
             self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
-
+        if self.use_prev_depth:
+            self.depth_embedding = nn.Sequential(
+                nn.Conv2d(1, 768, kernel_size=16, stride=16),
+                Rearrange('b c h w -> b (h w) c')
+            )
 
         self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
@@ -183,7 +190,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.position_getter = PositionGetter()
         
     
-    def forward(self, img_frames, K = 1, mode=None):
+    def forward(self, img_frames, depth_frames, start, K = 1, mode=None):
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []
         poses = []
@@ -289,6 +296,27 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
             else:
                 frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
                 glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
+        
+        if self.use_prev_depth:
+            
+            depth_embedding = self.depth_embedding(depth_frames[1].unsqueeze(dim=1))
+            rand_mask = (torch.rand(b)>0.75).to(device) if mode == 0 else torch.zeros(b).to(device).bool()
+            start[0] = start[0] | rand_mask
+            
+            start = [st.int() for st in start]
+            start[0] = start[0].unsqueeze(dim=1).unsqueeze(dim=1)
+            
+            if self.use_prev_depth == 'add':
+                glob2_layer_1 = glob2_layer_1 + depth_embedding * (1-start[0])
+                glob2_layer_2 = glob2_layer_2 + depth_embedding * (1-start[0])
+                glob2_layer_3 = glob2_layer_3 + depth_embedding * (1-start[0])
+                glob2_layer_4 = glob2_layer_4 + depth_embedding * (1-start[0])
+            elif self.use_prev_depth=='replace':
+                glob2_layer_1 = depth_embedding * (1-start[0]) + start[0] * glob_layer_1
+                glob2_layer_2 = depth_embedding * (1-start[0]) + start[0] * glob_layer_2
+                glob2_layer_3 = depth_embedding * (1-start[0]) + start[0] * glob_layer_3
+                glob2_layer_4 = depth_embedding * (1-start[0]) + start[0] * glob_layer_4
+                        
 
         cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) 
         cross_attn_out2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
