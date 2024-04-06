@@ -44,9 +44,19 @@ if __name__ == "__main__":
         model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
 
         #optimizer & scheduler
-        encode_index = len(list(model['depth'].module.encoder.parameters()))
-        optimizer = optim.Adam([{"params": parameters_to_train[:encode_index], "lr": 1e-5}, 
-                                {"params": parameters_to_train[encode_index:]}], float(train_cfg.lr))
+        encode_key = model['depth'].state_dict().keys()
+        encode_index = [True if 'encoder' in key else False for key in encode_key]
+        position_index = [True if 'module.decoder_pose_embed' in key else False for key in encode_key]
+        other_index = [False if ('encoder' in key or 'module.decoder_pose_embed' in key) else True for key in encode_key]
+        
+        encode_index = [i for i, val in enumerate(encode_index) if val]
+        position_index = [i for i, val in enumerate(position_index) if val]
+        other_index = [i for i, val in enumerate(other_index) if val]
+
+        # encode_index = len(list(model['depth'].module.encoder.parameters()))
+        optimizer = optim.Adam([{"params": [parameters_to_train[i] for i in encode_index], "lr": 1e-5}, 
+                                {"params": [parameters_to_train[i] for i in position_index], "lr": 1e-3},
+                                {"params": [parameters_to_train[i] for i in other_index]}], float(train_cfg.lr))
         
         if train_cfg.load_optim:
             print('Loading Adam optimizer')

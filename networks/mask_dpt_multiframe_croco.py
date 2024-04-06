@@ -312,10 +312,10 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
                 glob2_layer_3 = glob2_layer_3 + depth_embedding * (1-start[0])
                 glob2_layer_4 = glob2_layer_4 + depth_embedding * (1-start[0])
             elif self.use_prev_depth=='replace':
-                glob2_layer_1 = depth_embedding * (1-start[0]) + start[0] * glob_layer_1
-                glob2_layer_2 = depth_embedding * (1-start[0]) + start[0] * glob_layer_2
-                glob2_layer_3 = depth_embedding * (1-start[0]) + start[0] * glob_layer_3
-                glob2_layer_4 = depth_embedding * (1-start[0]) + start[0] * glob_layer_4
+                glob2_layer_1 = depth_embedding * (1-start[0]) + start[0] * glob2_layer_1
+                glob2_layer_2 = depth_embedding * (1-start[0]) + start[0] * glob2_layer_2
+                glob2_layer_3 = depth_embedding * (1-start[0]) + start[0] * glob2_layer_3
+                glob2_layer_4 = depth_embedding * (1-start[0]) + start[0] * glob2_layer_4
                         
 
         cross_attn_out1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) 

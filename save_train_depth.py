@@ -70,7 +70,7 @@ if __name__ == "__main__":
                 
         fpath = os.path.join(os.path.dirname(__file__), "splits", train_cfg.data.splits, "{}_files.txt")
 
-        train_filenames = utils.readlines(fpath.format("val"))
+        train_filenames = utils.readlines(fpath.format("train"))
 
         #validation
         with torch.no_grad():
@@ -84,7 +84,7 @@ if __name__ == "__main__":
             gt_colors= []
 
             print(f'Validation progress')
-            for i, inputs in enumerate(tqdm(val_loader)):
+            for i, inputs in enumerate(tqdm(train_loader)):
                 
                 total_loss = 0
                 losses = {}
@@ -121,7 +121,7 @@ if __name__ == "__main__":
                 # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
                 lines = train_filenames[i].split()
                 
-                f_str = "{:010d}{}".format(int(lines[1])-1, '.png')
+                f_str = "{:010d}{}".format(int(lines[1]), '.png')
                 depth_save_path = os.path.join(train_cfg.data.data_path, lines[0],'depth',f_str)
                 ## make dir if not exist
                 os.makedirs(os.path.dirname(depth_save_path), exist_ok=True)

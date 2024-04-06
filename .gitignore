@@ -5,6 +5,7 @@ log/
 wandb/
 pretrained_weights/
 *.pth
+similarity_matrix/
 
 
 

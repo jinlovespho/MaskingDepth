@@ -116,10 +116,8 @@ def baseline_model_load(model_cfg, device):
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc1.{key.split(".")[-1]}']
                     elif 'fn.net.3' in key:
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc2.{key.split(".")[-1]}']
-                    
                 elif 'to_patch_embedding' in key:
                     loaded_weight[key] = croco_weight['model'][f'patch_embed.proj.{key.split(".")[-1]}']
-
                 else:
                     print(key)
                     loaded_weight[key] = v.state_dict()[key]
@@ -203,7 +201,7 @@ def data_loader(data_cfg, batch_size, num_workers):
         val_dataset = dataset(data_cfg.data_path, val_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
                                 gt_num = -1, is_train=False, img_ext=data_cfg.img_ext)
         
-    train_loader = DataLoader(train_dataset, batch_size, True, num_workers=num_workers, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size, False, num_workers=num_workers, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size, True, num_workers=num_workers, pin_memory=True, drop_last=True)
 
     return train_loader, val_loader

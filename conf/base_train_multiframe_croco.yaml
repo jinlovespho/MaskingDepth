@@ -1,8 +1,8 @@
 ##### Supervised Training ######
 Train:
-  wandb : False  # log with wandb
+  wandb : True  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'hg_learnable_poseemb_mask06_crossattention_re'  # model names to save log file or wandb.
+  model_name: 'hg_croco_poseemb_mask06_useprevdepth_add'  # model names to save log file or wandb.
   wandb_log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/wandb/20240215'
   log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/log/20240215'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
@@ -25,7 +25,7 @@ Train:
     load_weight : False
     weight_path : './weight'
     pretrained_weight : 'croco'
-    learnable_decoder_posembedding: True
+    learnable_decoder_posembedding: False
     use_prev_depth: 'add'
 
   data:
