@@ -50,14 +50,13 @@ if __name__ == "__main__":
         model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
 
         #optimizer & scheduler
-        encode_key = model['depth'].state_dict().keys()
-        encode_index = [True if 'encoder' in key else False for key in encode_key]
-        other_index = [False if 'encoder' in key else True for key in encode_key]
-        # encode_index = len(list(model['depth'].module.encoder.parameters()))
-        optimizer = optim.Adam([{"params": parameters_to_train[encode_index], "lr": 1e-5}, 
-                                {"params": parameters_to_train[other_index]}], float(train_cfg.lr))
-        import pdb;pdb.set_trace()
+        encode_index = len(list(model['depth'].module.encoder.parameters()))
+        optimizer = optim.Adam([{"params": parameters_to_train[:encode_index], "lr": 1e-5}, 
+                                {"params": parameters_to_train[encode_index:]}], float(train_cfg.lr))
         
+        
+        pose_embedding1 = model['depth'].state_dict()['module.decoder_pose_embed1']
+        pose_embedding2 = model['depth'].state_dict()['module.decoder_pose_embed2']
 
         ## make correlation map between pose_embedding1 and pose_embedding1(x,y)
         

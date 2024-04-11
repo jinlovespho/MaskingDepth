@@ -39,6 +39,10 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.encoder = encoder
         self.encoder.transformer.set_hooks(hooks)
         self.hooks = hooks
+        
+        
+        
+        
 
         #read out processing (ignore / add / project[dpt use this process])
         readout_oper = get_readout_oper(vit_features, features, use_readout, start_index)
@@ -166,13 +170,15 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         # self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
         if self.args.learnable_decoder_posembedding:
             pose_shape = get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0).shape
-            self.decoder_pose_embed1 = nn.Parameter(torch.randn(pose_shape), requires_grad=True)
-            self.decoder_pose_embed2 = nn.Parameter(torch.randn(pose_shape), requires_grad=True)
+            
+            self.decoder_pose_embed1 = nn.Parameter(torch.randn(pose_shape), requires_grad=False if self.args.vit_decoder_poseemb is 'freeze' else True)
+            self.decoder_pose_embed2 = nn.Parameter(torch.randn(pose_shape), requires_grad=False if self.args.vit_decoder_poseemb is 'freeze' else True)
             self.rope = None
         else:
             self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
         if self.use_prev_depth:
+            print("use prev depth")
             self.depth_embedding = nn.Sequential(
                 nn.Conv2d(1, 768, kernel_size=16, stride=16),
                 Rearrange('b c h w -> b (h w) c')

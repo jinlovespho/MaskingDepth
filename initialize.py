@@ -121,14 +121,17 @@ def baseline_model_load(model_cfg, device):
                 else:
                     print(key)
                     loaded_weight[key] = v.state_dict()[key]
+                    
+            if model_cfg.vit_decoder_poseemb:
+                pos_emb_weight = torch.load("./vit_base_384.pth", map_location=device)
+                loaded_weight['pos_embedding'] = pos_emb_weight['pos_embedding']
 
         else:
-            loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
+            loaded_weight = torch.load("./vit_base_384.pth", map_location=device)
         
             for key, value in v.state_dict().items():
                 if key not in loaded_weight.keys():
                     loaded_weight[key] = loaded_weight['pos_embedding']
-        
         v.load_state_dict(loaded_weight)
         v.resize_pos_embed(192,640,device)
 
@@ -145,6 +148,12 @@ def baseline_model_load(model_cfg, device):
                         cross_attn_depth = model_cfg.cross_attn_depth,
                         croco = (model_cfg.pretrained_weight == 'croco')
                         )
+        
+        if model_cfg.vit_decoder_poseemb:
+            model['depth'].state_dict()['module.decoder.pos_embedding1'] = v.state_dict()['pos_embedding'].clone().detach()
+            model['depth'].state_dict()['module.decoder.pos_embedding2'] = v.state_dict()['pos_embedding'].clone().detach()
+
+            
     else:
         pass
     
