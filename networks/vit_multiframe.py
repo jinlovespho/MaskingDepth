@@ -202,7 +202,7 @@ class ViT_Multiframe(nn.Module):
     def get_patch_size(self):
         return self.__patch_size
 
-    def resize_pos_embed(self, h, w, device):
+    def resize_pos_embed(self, h, w, device, decoder=False):
         self.__image_size = (h,w)           # (h,w) = (192,640)
         pw, ph = self.get_patch_size()      # (pw,ph) = (16,16)
         gs_w = w//pw        # gs_w = num_patch_in_h = 12
@@ -220,6 +220,20 @@ class ViT_Multiframe(nn.Module):
             posemb_grid = F.interpolate(posemb_grid, size=(gs_h, gs_w), mode="bilinear")
             posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, gs_h * gs_w, -1)
             self.pos_emb_lst[i] = nn.Parameter(torch.cat([posemb_tok, posemb_grid], dim=1)).to(device)          
+        
+        if decoder:
+            posemb_tok, posemb_grid = (
+                self.pos_embedding[:, 0:1, :],
+                self.pos_embedding[:, 1: , :],
+            )
+
+            gs_old = int(math.sqrt(posemb_grid.shape[1]))
+
+            posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
+            posemb_grid = F.interpolate(posemb_grid, size=(gs_h, gs_w), mode="bilinear")
+            posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, gs_h * gs_w, -1)
+
+            self.pos_embedding = nn.Parameter(torch.cat([posemb_tok, posemb_grid], dim=1))
 
 
 class ResNetV2(nn.Module):

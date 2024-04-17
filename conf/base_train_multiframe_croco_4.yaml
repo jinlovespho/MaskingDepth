@@ -2,7 +2,7 @@
 Train:
   wandb : True  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'hgbase_noposeemb_mask06'  # model names to save log file or wandb.
+  model_name: 'hgbase_ropeposeemb_mask06'  # model names to save log file or wandb.
   wandb_log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/wandb/20240215'
   log_path: '/media/dataset1/jinlovespho_log/monodepth/MaskingDepth/log/20240215'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
@@ -28,7 +28,7 @@ Train:
     learnable_decoder_posembedding: False
     vit_decoder_poseemb: null       # freeze. unfreeze, null
     use_prev_depth: null        # add, replace, null
-    no_poseemb: True
+    no_poseemb: False
 
   data:
     height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것, 원래 이미지 사이즈: (375,1242)

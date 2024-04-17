@@ -55,7 +55,7 @@ if __name__ == "__main__":
 
         # encode_index = len(list(model['depth'].module.encoder.parameters()))
         optimizer = optim.Adam([{"params": [parameters_to_train[i] for i in encode_index], "lr": 1e-5}, 
-                                {"params": [parameters_to_train[i] for i in position_index], "lr": 1e-3},
+                                {"params": [parameters_to_train[i] for i in position_index], "lr": 1e-4},
                                 {"params": [parameters_to_train[i] for i in other_index]}], float(train_cfg.lr))
         
         if train_cfg.load_optim:

@@ -137,7 +137,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     pred_uncert = None 
 
     if mode == EVAL:
-        pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic['color_aug'],inputs_dic['prev_depth'],inputs_dic['start'], model, K = train_cfg.K, mode=mode)
+        pred_depth_mask, full_features, _ = model_forward_multiframe(inputs_dic['color_aug'],inputs_dic['prev_depth'],inputs_dic['start'], model, K = train_cfg.K, mode=mode)
     else:
         pred_depth_mask = None
 

@@ -57,10 +57,37 @@ if __name__ == "__main__":
         
         pose_embedding1 = model['depth'].state_dict()['module.decoder_pose_embed1']
         pose_embedding2 = model['depth'].state_dict()['module.decoder_pose_embed2']
+        
+        loaded_weight = torch.load("./vit_base_384.pth", map_location=device)
+        pose_embedding_tmp = loaded_weight['pos_embedding'].squeeze()[1:]
 
+        import pdb;pdb.set_trace()
         ## make correlation map between pose_embedding1 and pose_embedding1(x,y)
         
         ## x 0~12. y 0~40 all pairs
+        
+        pose_embedding1 = F.normalize(pose_embedding1, dim=-1)
+        similarity_matrix = torch.mm(pose_embedding1, pose_embedding1.transpose(0, 1))
+        
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(similarity_matrix.cpu().detach().numpy(), cmap='viridis')
+        plt.savefig(f'./similarity_matrix.png')
+        
+        # for x in range(14):
+        #     for y in range(14):
+        #         pose_embedding1 = F.normalize(pose_embedding_tmp, dim=-1)
+        #         similarity_matrix = torch.mm(pose_embedding_tmp, pose_embedding_tmp.transpose(0, 1))
+                
+        #         similarity_matrix = similarity_matrix.reshape(24,24,576)
+        #         similarity_matrix_query = similarity_matrix[x,y]
+                
+        #         similarity_matrix_query = similarity_matrix_query.reshape(24,24)
+                
+        #         plt.figure(figsize=(10, 8))
+        #         sns.heatmap(similarity_matrix_query.cpu().detach().numpy(), cmap='viridis')
+        #         # save plt as figure
+        #         plt.savefig(f'./similarity_matrix3/similarity_matrix_1_{x}_{y}.png')
+        
         
         # for x in range(12):
         #     for y in range(40):
@@ -76,22 +103,22 @@ if __name__ == "__main__":
         #         plt.figure(figsize=(10, 8))
         #         sns.heatmap(similarity_matrix_query.cpu().detach().numpy(), cmap='viridis')
         #         # save plt as figure
-        #         plt.savefig(f'./similarity_matrix/similarity_matrix_1_{x}_{y}.png')
-        for x in range(12):
-            for y in range(40):
-                pose_embedding2 = F.normalize(pose_embedding2, dim=-1)
-                similarity_matrix = torch.mm(pose_embedding2, pose_embedding2.transpose(0, 1))
+        #         plt.savefig(f'./similarity_matrix3/similarity_matrix_1_{x}_{y}.png')
+        # for x in range(12):
+        #     for y in range(40):
+        #         pose_embedding2 = F.normalize(pose_embedding2, dim=-1)
+        #         similarity_matrix = torch.mm(pose_embedding2, pose_embedding2.transpose(0, 1))
                 
                 
-                similarity_matrix = similarity_matrix.reshape(12,40,480)
-                similarity_matrix_query = similarity_matrix[x,y]
+        #         similarity_matrix = similarity_matrix.reshape(12,40,480)
+        #         similarity_matrix_query = similarity_matrix[x,y]
                 
-                similarity_matrix_query = similarity_matrix_query.reshape(12,40)
+        #         similarity_matrix_query = similarity_matrix_query.reshape(12,40)
                 
-                plt.figure(figsize=(10, 8))
-                sns.heatmap(similarity_matrix_query.cpu().detach().numpy(), cmap='viridis')
-                # save plt as figure
-                plt.savefig(f'./similarity_matrix2/similarity_matrix_2_{x}_{y}.png')
+        #         plt.figure(figsize=(10, 8))
+        #         sns.heatmap(similarity_matrix_query.cpu().detach().numpy(), cmap='viridis')
+        #         # save plt as figure
+        #         plt.savefig(f'./similarity_matrix3/similarity_matrix_2_{x}_{y}.png')
         import pdb;pdb.set_trace()
         
         

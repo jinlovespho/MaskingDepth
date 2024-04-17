@@ -133,7 +133,7 @@ def baseline_model_load(model_cfg, device):
                 if key not in loaded_weight.keys():
                     loaded_weight[key] = loaded_weight['pos_embedding']
         v.load_state_dict(loaded_weight)
-        v.resize_pos_embed(192,640,device)
+        v.resize_pos_embed(192,640,device, model_cfg.vit_decoder_poseemb)
 
         model['depth'] = networks.Masked_DPT_Multiframe_Croco(encoder=v,
                         max_depth = model_cfg.max_depth,
@@ -150,12 +150,14 @@ def baseline_model_load(model_cfg, device):
                         )
         
         if model_cfg.vit_decoder_poseemb:
-            model['depth'].state_dict()['module.decoder.pos_embedding1'] = v.state_dict()['pos_embedding'].clone().detach()
-            model['depth'].state_dict()['module.decoder.pos_embedding2'] = v.state_dict()['pos_embedding'].clone().detach()
-
+            vit_pose_embedding = {}
+            vit_pose_embedding['decoder_pose_embed1'] = v.state_dict()['pos_embedding'].squeeze()[1:].clone().detach()
+            vit_pose_embedding['decoder_pose_embed2'] = v.state_dict()['pos_embedding'].squeeze()[1:].clone().detach()
             
+            model['depth'].load_state_dict(vit_pose_embedding, strict=False)   
     else:
         pass
+    
     
     if model_cfg.load_weight:
         print("Loading Network weights")
