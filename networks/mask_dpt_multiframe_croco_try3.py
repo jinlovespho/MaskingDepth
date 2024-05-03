@@ -13,7 +13,7 @@ from .fuse_cross_attn import *
 from .conv4d import Conv4d
 
 
-class Masked_DPT_Multiframe_Croco_Try1(nn.Module):
+class Masked_DPT_Multiframe_Croco_Try3(nn.Module):
     def __init__(
         self,
         *,
@@ -178,22 +178,28 @@ class Masked_DPT_Multiframe_Croco_Try1(nn.Module):
         
         # ways to fuse cross attn map
         # self.fuse_cross_attn_module1 = Fuse_Cross_Attn_Module1(concat_dim=480+768, out_dim=768)     # concat cAttnMap + cAttnOut
-        self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=12*480, out_dim=768)             # only linear cAttnMap
+        # self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=12*480, out_dim=768)             # only linear cAttnMap
         # self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)             # only linear cAttnOut
         
         # conv4d 
         self.conv4d_module1 = nn.Sequential(Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True), nn.Sigmoid(),
-                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.Sigmoid() )
+                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.ReLU() )
         
         self.conv4d_module2 = nn.Sequential(Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True), nn.Sigmoid(),
-                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.Sigmoid() )
+                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.ReLU() )
         
         self.conv4d_module3 = nn.Sequential(Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True), nn.Sigmoid(),
-                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.Sigmoid() )
+                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.ReLU() )
         
         self.conv4d_module4 = nn.Sequential(Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True), nn.Sigmoid(),
-                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.Sigmoid() )
+                                            Conv4d(self.encoder.heads, self.encoder.heads, kernel_size=(3, 3, 3, 3), padding=(1,1,1,1), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ), nn.ReLU() )
     
+        # cat linear 
+        self.cat_linear1 = nn.Linear(6528, 768)
+        self.cat_linear2 = nn.Linear(6528, 768)
+        self.cat_linear3 = nn.Linear(6528, 768)
+        self.cat_linear4 = nn.Linear(6528, 768)
+        
     def forward(self, img_frames, K = 1, mode=None):
         '''
         img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
@@ -226,8 +232,6 @@ class Masked_DPT_Multiframe_Croco_Try1(nn.Module):
         idx_umsk = idx_umsk.sort().values
         idx_bs = torch.arange(b)[:,None]
         
-        # breakpoint()
-        
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
         poses0_unmsk_tkn = poses[0][idx_bs, idx_umsk]
@@ -245,7 +249,7 @@ class Masked_DPT_Multiframe_Croco_Try1(nn.Module):
         glob1_layer_1 = self.encoder.transformer.features[0]                    # (8,192,768)
         glob1_layer_2 = self.encoder.transformer.features[1]      
         glob1_layer_3 = self.encoder.transformer.features[2]      
-        glob1_layer_4 = self.encoder.transformer.features[3]      
+        glob1_layer_4 = self.encoder.transformer.features[3]    # glob1 과 동일 
                     
         # t-1 frame encoder
         glob2 = self.encoder.transformer(tokenized_frames[1],poses[1])          # (8,480,768)
@@ -291,16 +295,16 @@ class Masked_DPT_Multiframe_Croco_Try1(nn.Module):
             glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
         
         # cross attention output
-        c_attn_out1, c_attn_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1])      # (b,480,768)
-        c_attn_out2, c_attn_map2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
+        c_attn_out1, c_attn_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) # (b,480,768)
+        c_attn_out2, c_attn_map2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1]) # (b,n,d)    
         c_attn_out3, c_attn_map3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
         c_attn_out4, c_attn_map4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
 
         # TRY1
         avg_cmap1=torch.zeros(c_attn_map1[0].shape).to(self.device)
-        avg_cmap2=torch.zeros(c_attn_map1[0].shape).to(self.device)
-        avg_cmap3=torch.zeros(c_attn_map1[0].shape).to(self.device)
-        avg_cmap4=torch.zeros(c_attn_map1[0].shape).to(self.device)
+        avg_cmap2=torch.zeros(c_attn_map2[0].shape).to(self.device)
+        avg_cmap3=torch.zeros(c_attn_map3[0].shape).to(self.device)
+        avg_cmap4=torch.zeros(c_attn_map4[0].shape).to(self.device)
         
         for map1 in c_attn_map1:
             avg_cmap1 += map1
@@ -319,35 +323,52 @@ class Masked_DPT_Multiframe_Croco_Try1(nn.Module):
         avg_cmap3 = avg_cmap3 / len(c_attn_map3)
         avg_cmap4 = avg_cmap4 / len(c_attn_map4)  
         
-        img_h, img_w = self.encoder.get_image_size()
-        patch_h, patch_w = self.encoder.get_patch_size() 
-        num_patch_h, num_patch_w = img_h//patch_h, img_w//patch_w 
+        # img_h, img_w = self.encoder.get_image_size()
+        # patch_h, patch_w = self.encoder.get_patch_size() 
+        # num_patch_h, num_patch_w = img_h//patch_h, img_w//patch_w 
         
-        avg_cmap1 = avg_cmap1.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (b,head,h,w,h,w)
-        avg_cmap2 = avg_cmap2.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (8,12,12,40,12,40)
-        avg_cmap3 = avg_cmap3.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
-        avg_cmap4 = avg_cmap4.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
-        # avg_cmap1 = rearrange(avg_cmap1, 'b head (h1 w1) (h2 w2) -> b head h1 w1 h2 w2', h1=num_patch_h, h2=num_patch_h)
+        # avg_cmap1 = avg_cmap1.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (b,head,h,w,h,w)
+        # avg_cmap2 = avg_cmap2.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (8,12,12,40,12,40)
+        # avg_cmap3 = avg_cmap3.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
+        # avg_cmap4 = avg_cmap4.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
+        # # avg_cmap1 = rearrange(avg_cmap1, 'b head (h1 w1) (h2 w2) -> b head h1 w1 h2 w2', h1=num_patch_h, h2=num_patch_h)
         
-        cmap1 = self.conv4d_module1(avg_cmap1)  # (b,head,h,w,h,w)      
-        cmap2 = self.conv4d_module2(avg_cmap2)  # (8,12,12,40,12,40)      
-        cmap3 = self.conv4d_module3(avg_cmap3)
-        cmap4 = self.conv4d_module4(avg_cmap4)
-
-        cmap1 = cmap1.view(b, self.encoder.heads, n,n).permute(0,2,1,3) # (b,n,head,n)
-        cmap2 = cmap2.view(b, self.encoder.heads, n,n).permute(0,2,1,3)
-        cmap3 = cmap3.view(b, self.encoder.heads, n,n).permute(0,2,1,3)
-        cmap4 = cmap4.view(b, self.encoder.heads, n,n).permute(0,2,1,3)
+        # cmap1 = self.conv4d_module1(avg_cmap1)  # (b,head,h,w,h,w)      
+        # cmap2 = self.conv4d_module2(avg_cmap2)  # (8,12,12,40,12,40)      
+        # cmap3 = self.conv4d_module3(avg_cmap3)
+        # cmap4 = self.conv4d_module4(avg_cmap4)
+        
+        # cmap1 = cmap1.view(b, self.encoder.heads, n,n).permute(0,2,1,3) # (b,n,head,n)
+        # cmap2 = cmap2.view(b, self.encoder.heads, n,n).permute(0,2,1,3)
+        # cmap3 = cmap3.view(b, self.encoder.heads, n,n).permute(0,2,1,3)
+        # cmap4 = cmap4.view(b, self.encoder.heads, n,n).permute(0,2,1,3)
+        
+        # TRY3-2 위에 주석하고 여기만 추가 
+        cmap1 = avg_cmap1.permute(0,2,1,3)  # (b,n,head,n)
+        cmap2 = avg_cmap2.permute(0,2,1,3)
+        cmap3 = avg_cmap3.permute(0,2,1,3)
+        cmap4 = avg_cmap4.permute(0,2,1,3)
         
         cmap1 = cmap1.flatten(start_dim=2)  # (b,n, head*n)
         cmap2 = cmap2.flatten(start_dim=2)  # (8, 480, 5760)
         cmap3 = cmap3.flatten(start_dim=2)
         cmap4 = cmap4.flatten(start_dim=2)
-
-        # breakpoint()
-        layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module2( c_attn_maps = [cmap1, cmap2, cmap3, cmap4],
-                                                                           c_attn_outs = [c_attn_out1, c_attn_out2, c_attn_out3, c_attn_out4])
         
+        # TRY3-1 and 3-2
+        cat_out_and_map1 = torch.cat([glob1_layer_1,cmap1], dim=-1)
+        cat_out_and_map2 = torch.cat([glob1_layer_2,cmap2], dim=-1)
+        cat_out_and_map3 = torch.cat([glob1_layer_3,cmap3], dim=-1)
+        cat_out_and_map4 = torch.cat([glob1_layer_4,cmap4], dim=-1)
+        
+        layer_1 = self.cat_linear1(cat_out_and_map1)
+        layer_2 = self.cat_linear2(cat_out_and_map2)
+        layer_3 = self.cat_linear3(cat_out_and_map3)
+        layer_4 = self.cat_linear4(cat_out_and_map4)
+
+        # breakpoint()        
+
+        # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module2( c_attn_maps = [cmap1, cmap2, cmap3, cmap4],
+        #                                                                    c_attn_outs = [c_attn_out1, c_attn_out2, c_attn_out3, c_attn_out4])
         
         # layer_1 = c_attn_out1
         # layer_2 = c_attn_out2
