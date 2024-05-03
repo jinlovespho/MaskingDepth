@@ -9,3 +9,5 @@ from .fuse_cross_attn import *
 from .resnet_encoder import ResnetEncoder
 from .depth_decoder import DepthDecoder
 from .monodepth2 import Monodepth
+
+from .conv4d import Conv4d

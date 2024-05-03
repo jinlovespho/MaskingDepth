@@ -14,12 +14,12 @@ class Fuse_Cross_Attn_Module1(nn.Module):
     def forward(self, c_attn_maps, c_attn_outs):
         # c_attn_maps: (b,480,480)
         # c_attn_outs: (b,480,768)
-        cat0 = torch.cat([c_attn_maps[0], c_attn_outs[0]], dim=2)
+        cat0 = torch.cat([c_attn_maps[0], c_attn_outs[0]], dim=2)   # (b,480,480+768)
         cat1 = torch.cat([c_attn_maps[1], c_attn_outs[1]], dim=2)
         cat2 = torch.cat([c_attn_maps[2], c_attn_outs[2]], dim=2)
         cat3 = torch.cat([c_attn_maps[3], c_attn_outs[3]], dim=2)
         
-        cat0_linear = self.cat0_linear(cat0)
+        cat0_linear = self.cat0_linear(cat0)                        # (b,480,768)
         cat1_linear = self.cat1_linear(cat1)
         cat2_linear = self.cat2_linear(cat2)
         cat3_linear = self.cat3_linear(cat3)
@@ -46,6 +46,13 @@ class Fuse_Cross_Attn_Module2(nn.Module):
         out2_linear = self.c_attn_map0_linear(c_attn_maps[2])
         out3_linear = self.c_attn_map0_linear(c_attn_maps[3])
         
+        # dot prod
+        # out0 = out0_linear * c_attn_outs[0]
+        # out1 = out1_linear * c_attn_outs[1]
+        # out2 = out2_linear * c_attn_outs[2]
+        # out3 = out3_linear * c_attn_outs[3]
+        
+        # sum
         out0 = out0_linear + c_attn_outs[0]     # (b,480,768)
         out1 = out1_linear + c_attn_outs[1]
         out2 = out2_linear + c_attn_outs[2]

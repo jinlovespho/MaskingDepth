@@ -157,7 +157,6 @@ class ViT_Multiframe(nn.Module):
                 nn.Linear(patch_dim, dim),
             )
 
-        
         # pos embedding for multiframe
         self.pos_emb_lst = []
         for _ in range(self.num_prev_frame+1):

@@ -176,18 +176,22 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         self.position_getter = PositionGetter()
                 
         # JINLOVESPHO
-        self.fuse_cross_attn_module1 = Fuse_Cross_Attn_Module1(concat_dim=480+768, out_dim=768)
-        self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=480, out_dim=768)
-        self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)
+        self.fuse_cross_attn_module1 = Fuse_Cross_Attn_Module1(concat_dim=480+768, out_dim=768)     # concat cAttnMap + cAttnOut
+        self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=480, out_dim=768)             # only linear cAttnMap
+        self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)             # only linear cAttnOut
         
     
     def forward(self, img_frames, K = 1, mode=None):
+        '''
+        img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
+        img_frames[1] : previous t-1 image 
+        '''
         # breakpoint()
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []
         poses = []
         for i, frame in enumerate(img_frames):              # frame: (b,3,192,640)   
-            tmp =self.encoder.to_patch_embedding(frame)     # embedding: (b,480,768), where patchsize=16, 480 = 12*40 = (192/16)*(640/16) 총 token(patch)개수 
+            tmp =self.encoder.to_patch_embedding(frame)     # tmp: (b,480,768), where patchsize=16, (192/16)*(640/16)=480 총 token(patch)개수 
             if not self.encoder.croco:                      
                 tmp += self.encoder.pos_emb_lst[i][:,1:,:]
             tmp = self.encoder.dropout(tmp)
@@ -200,8 +204,8 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         device = tokenized_frames[0].device.type  
         
         # number of patches to mask
-        num_p_msk = int(self.masking_ratio * n )
-
+        num_p_msk = int(self.masking_ratio * n ) if mode == 0 else 0    # validation(mode=1) 이면 num_p_mask=0 으로 만들어서 unmask !
+        
         # random masking index generation
         idx_rnd = torch.rand(b,n, device=device).argsort()
         idx_msk, idx_umsk = idx_rnd[:,:num_p_msk], idx_rnd[:,num_p_msk:]
@@ -209,12 +213,16 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         idx_umsk = idx_umsk.sort().values
         idx_bs = torch.arange(b)[:,None]
         
+        # breakpoint()
+        
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
         poses0_unmsk_tkn = poses[0][idx_bs, idx_umsk]
 
+        # breakpoint()
+        
         # masked tokens
-        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)   # einops 의 repeat 은 메모리 공유. 즉 다 바뀌어 
         msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk)
         msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk)
         msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk)
@@ -238,6 +246,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         glob2_layer_3 = self.encoder.transformer.features[2]      
         glob2_layer_4 = self.encoder.transformer.features[3]      
 
+        # encoder output1 에 msk tkn 을 concat 하는 과정
         frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
         frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
         frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1
@@ -246,6 +255,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
             frame0_msk_umsk_tkn1 = frame0_msk_umsk_tkn1 + self.decoder_pose_embed
             glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
         
+        # encoder output2 에 msk tkn 을 concat 하는 과정
         frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
         frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
         frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2
@@ -254,6 +264,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
             frame0_msk_umsk_tkn2 = frame0_msk_umsk_tkn2 + self.decoder_pose_embed
             glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
         
+        # encoder output3 에 msk tkn 을 concat 하는 과정
         frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
         frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
         frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
@@ -262,6 +273,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
             frame0_msk_umsk_tkn3 = frame0_msk_umsk_tkn3 + self.decoder_pose_embed
             glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
 
+        # encoder output4 에 msk tkn 을 concat 하는 과정
         frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
         frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
         frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4
@@ -313,24 +325,24 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         c_attn_map4_rollout = self.rollout(c_attn_map4, discard_ratio, head_fusion, self.device)
         
         # breakpoint()
-        c_attn_map1_rollout = c_attn_map1_rollout.detach()      # (b,480,480)
-        c_attn_map2_rollout = c_attn_map2_rollout.detach()
-        c_attn_map3_rollout = c_attn_map3_rollout.detach()
-        c_attn_map4_rollout = c_attn_map4_rollout.detach()
-        
+        # c_attn_map1_rollout = c_attn_map1_rollout.detach()      # (b,480,480)
+        # c_attn_map2_rollout = c_attn_map2_rollout.detach()
+        # c_attn_map3_rollout = c_attn_map3_rollout.detach()
+        # c_attn_map4_rollout = c_attn_map4_rollout.detach()
         
         # breakpoint()
         # # WAY1 - concat 
         # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module1( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
         #                                                                    c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
         
-        # # WAY2 - only c_attn_map linear
-        # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module2( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
-        #                                                                    c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
-        
-        # WAY3 - onlt c_attn_out linear 
-        layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module3( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
+        breakpoint()
+        # WAY2 - only c_attn_map linear
+        layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module2( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
                                                                            c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
+        
+        # # WAY3 - only c_attn_out linear 
+        # layer_1, layer_2, layer_3, layer_4 = self.fuse_cross_attn_module3( c_attn_maps = [c_attn_map1_rollout, c_attn_map2_rollout, c_attn_map3_rollout, c_attn_map4_rollout],
+        #                                                                    c_attn_outs = [cross_attn_out1, cross_attn_out2, cross_attn_out3, cross_attn_out4])
     
     
         # JINLOVESPHO
@@ -341,8 +353,8 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         
         layer_1 = self.act_postprocess1[0](layer_1)     # 모두 index[0] 이므로, Tranpose() 통과 의미.
         layer_2 = self.act_postprocess2[0](layer_2)     # 즉 모두(B, 480, 768) -> Transpose -> (B, 768, 480) 된다.
-        layer_3 = self.act_postprocess3[0](layer_3)
-        layer_4 = self.act_postprocess4[0](layer_4)
+        layer_3 = self.act_postprocess3[0](layer_3)     # 이렇게 하는 이유는 2d img 꼴 처럼(C,H,W) 꼴로 표현하기 위해 channel 을 제일 앞으로 가져와 O
+        layer_4 = self.act_postprocess4[0](layer_4)     # (B,480,768)=(B,HW,C) 이기에, -> (B,C,HW)->(B,C,H,W) 로 만들기 위함
 
 
         # transformer encoder transposed outputs (intermediate ouputs 포함 O)
@@ -355,6 +367,7 @@ class Masked_DPT_Multiframe_Croco(nn.Module):
         # (480,768) = (N,D) -> (C,H,W) 꼴로 만들어야 
         # (480,768) -> (768, H, W) -> (768, height patch 개수, width patch 개수) -> (768, 192/16, 640/16) -> (768, 12, 40) 이 되는 것 ! 
         
+        # transformer 2d (b,hw,d)꼴을 -> img 3d (b,c,h,w) 꼴로 만들어줌
         if layer_1.ndim == 3:
             layer_1 = self.unflatten(layer_1)       # (B,768,12,40) 
         if layer_2.ndim == 3:   

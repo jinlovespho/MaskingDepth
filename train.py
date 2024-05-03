@@ -124,8 +124,26 @@ if __name__ == "__main__":
                     progress.write(f'(epoch:{epoch+1} / (iter:{i+1})) >> loss:{losses}\n') 
             
             # save model & optimzier (.pth)
-            if epoch % 5 == 4:
+            if epoch % 10 == 9:
                 utils.save_component(train_cfg.log_path, train_cfg.model_name, epoch, model, optimizer)
+
+            # breakpoint()
+            # LOAD MODEL and VISUALIZE ATTENTION MAPS
+            # load_path = '/media/dataset1/jinlovespho/log/multiframe/pho_gpu1_kitti_croco_rope_mask06_fuse(only_map)/weights_50/depth.pth'
+            # loaded_weight = torch.load(load_path)
+            
+            # load_result = model['depth'].module.load_state_dict(loaded_weight)
+
+            # visualize 4 cross attention maps 
+            # ca1_name=[]
+            # ca1_mod=[]
+            # for name, module in model['depth'].module.named_modules():
+            #     if 'cross_attn_module1' in name and 'cross_attn.attn_drop' in name:
+            #         ca1_name.append(name)
+            #         module.register_forward_hook(lambda m,i,o: ca1_mod.append( o.detach().cpu() ) )
+                    
+            # breakpoint()
+            
 
             #validation
             with torch.no_grad():
@@ -156,6 +174,7 @@ if __name__ == "__main__":
                         else:
                             total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                             
+                        # breakpoint()
                         gt_depth = inputs[0]['depth_gt']
                         gt_color = inputs[0]['color']
                         
@@ -177,7 +196,7 @@ if __name__ == "__main__":
                     gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
                     # JINLOVESPHO
                     # pred_colors.extend(pred_color.cpu().numpy())    # 굳이 color에 대해서는 eval metric 돌릴필요 없는듯.
-                    # gt_colors.extend(gt_color.cpu().numpy())
+                    # gt_colors.extend(gt_color.cpu().numpy()) 
 
                 # breakpoint()
                 eval_error = eval_metric(pred_depths, gt_depths, train_cfg)  
