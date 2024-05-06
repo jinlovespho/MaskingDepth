@@ -15,3 +15,4 @@ from .conv4d import Conv4d
 from .mask_dpt_multiframe_croco_try1 import Masked_DPT_Multiframe_Croco_Try1
 from .mask_dpt_multiframe_croco_try2 import Masked_DPT_Multiframe_Croco_Try2
 from .mask_dpt_multiframe_croco_try3 import Masked_DPT_Multiframe_Croco_Try3
+from .mask_dpt_multiframe_croco_try4 import Masked_DPT_Multiframe_Croco_Try4
