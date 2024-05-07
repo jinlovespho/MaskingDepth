@@ -141,7 +141,7 @@ class CrossAttention(nn.Module):
         self.projq = nn.Linear(dim, dim, bias=qkv_bias)
         self.projk = nn.Linear(dim, dim, bias=qkv_bias)
         self.projv = nn.Linear(dim, dim, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
+        self.c_attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         
@@ -162,7 +162,7 @@ class CrossAttention(nn.Module):
             
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        attn = self.c_attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, Nq, C)
         x = self.proj(x)

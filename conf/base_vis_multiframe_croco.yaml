@@ -1,6 +1,6 @@
 ##### Supervised Training ######
 Train:
-  wandb : True  # log with wandb
+  wandb : False  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
   model_name: 'pho_gpu2_kitti_bs4_mask00_fuse(try4c_conv4d_sum_sg)'  # model names to save log file or wandb.
   wandb_log_path: '/media/dataset1/jinlovespho/log/multiframe'
@@ -9,8 +9,8 @@ Train:
   seed: 41
   start_epoch: 0
   end_epoch: 50
-  batch_size: 4
-  num_workers: 8
+  batch_size: 1
+  num_workers: 1
   lr: 1e-4
   K: 1                 # set number of K for K-way masking, 64 is the default
   load_optim : False

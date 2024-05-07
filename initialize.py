@@ -503,8 +503,8 @@ def data_loader(data_cfg, batch_size, num_workers):
                                 gt_num = -1, is_train=True, img_ext=data_cfg.img_ext)
         val_dataset = dataset(data_cfg.data_path, val_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
                                 gt_num = -1, is_train=False, img_ext=data_cfg.img_ext)
-        
+    
     train_loader = DataLoader(train_dataset, batch_size, True, num_workers=num_workers, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size, True, num_workers=num_workers, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size, False, num_workers=num_workers, pin_memory=True, drop_last=True)
 
-    return train_loader, val_loader
+    return train_dataset, val_dataset, train_loader, val_loader

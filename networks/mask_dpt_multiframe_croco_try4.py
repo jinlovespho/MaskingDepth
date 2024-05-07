@@ -361,10 +361,11 @@ class Masked_DPT_Multiframe_Croco_Try4(nn.Module):
         lin_cmap3 = self.cmap3_linear(cmap3)
         lin_cmap4 = self.cmap4_linear(cmap4)
         
-        layer_1 = glob1_layer_1 + lin_cmap1     # (b,n,d)
-        layer_2 = glob1_layer_2 + lin_cmap2     # (b,480,768)
-        layer_3 = glob1_layer_3 + lin_cmap3 
-        layer_4 = glob1_layer_4 + lin_cmap4 
+        # apply stop grad. on encoder output 
+        layer_1 = glob1_layer_1.detach() + lin_cmap1     # (b,n,d)
+        layer_2 = glob1_layer_2.detach() + lin_cmap2     # (b,480,768)
+        layer_3 = glob1_layer_3.detach() + lin_cmap3 
+        layer_4 = glob1_layer_4.detach() + lin_cmap4 
         
         # breakpoint()
         

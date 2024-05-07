@@ -139,6 +139,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
         pred_depth_mask = None
 
 
+
     #total_loss
     for loss in losses.values():
         total_loss += loss
