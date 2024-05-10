@@ -135,6 +135,94 @@ def baseline_model_load(model_cfg, device):
                         cross_attn_depth = model_cfg.cross_attn_depth,
                         croco = (model_cfg.pretrained_weight == 'croco'),
                         )
+    
+    # JINLOVESPHO baseline_vit_base
+    elif model_cfg.baseline == 'baseline':
+        
+        if model_cfg.vit_type == 'vit_base':
+            print('ENCODER: vit_base')
+            enc_layers=12
+            enc_hidden_dim=768
+            enc_mlp_dim=3072
+            enc_heads=12
+        
+        elif model_cfg.vit_type == 'vit_large':
+            print('ENCODER: vit_large')
+            enc_layers=24
+            enc_hidden_dim=1024
+            enc_mlp_dim=4096
+            enc_heads=16
+        
+        else:
+            print('vit type not valid')
+
+        v = networks.ViT_Multiframe(    image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
+                                        patch_size = 16,
+                                        num_classes = 1000,
+                                        dim = enc_hidden_dim,
+                                        depth = enc_layers,                     # transformer 의 layer(attention+ff) 개수 의미
+                                        heads = enc_heads,
+                                        mlp_dim = enc_mlp_dim,
+                                        num_prev_frame=model_cfg.num_prev_frame,
+                                        croco = (model_cfg.pretrained_weight == 'croco'))
+        
+        if model_cfg.pretrained_weight == 'croco':
+            
+            if model_cfg.vit_type == 'vit_base':
+                croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+            elif model_cfg.vit_type == 'vit_large':
+                croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
+
+            loaded_weight = {}
+            
+            for key, value in v.state_dict().items():
+                if 'transformer' in key:
+                    if '0.norm' in key:
+                        breakpoint()
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm1.{key.split(".")[-1]}']
+                    elif 'qkv' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.qkv.{key.split(".")[-1]}']
+                    elif 'to_out' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.proj.{key.split(".")[-1]}']
+                    elif '1.norm' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm2.{key.split(".")[-1]}']
+                    elif 'fn.net.0' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc1.{key.split(".")[-1]}']
+                    elif 'fn.net.3' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc2.{key.split(".")[-1]}']
+                    
+                elif 'to_patch_embedding' in key:
+                    loaded_weight[key] = croco_weight['model'][f'patch_embed.proj.{key.split(".")[-1]}']
+
+                else:
+                    print(key)
+                    loaded_weight[key] = v.state_dict()[key]
+        
+        else:
+            loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
+        
+            for key, value in v.state_dict().items():
+                if key not in loaded_weight.keys():
+                    loaded_weight[key] = loaded_weight['pos_embedding']
+        
+        is_load_complete = v.load_state_dict(loaded_weight)
+        print(is_load_complete)
+        v.resize_pos_embed(192,640,device)
+
+        breakpoint()
+        model['depth'] = networks.mask_dpt_multiframe_croco_baseline.Masked_DPT_Multiframe_Croco_Baseline(encoder=v,
+                        max_depth = model_cfg.max_depth,
+                        features=[96, 192, 384, 768],           # 무슨 feature ?
+                        hooks=[2, 5, 8, 11],                    # hooks ?
+                        vit_features=enc_hidden_dim,                       # embed dim ? yes!
+                        use_readout='project',
+                        num_prev_frame=model_cfg.num_prev_frame,
+                        masking_ratio=model_cfg.masking_ratio,
+                        num_frame_to_mask=model_cfg.num_frame_to_mask,
+                        cross_attn_depth = model_cfg.cross_attn_depth,
+                        croco = (model_cfg.pretrained_weight == 'croco'),
+                        )
+    
         
     # JINLOVESPHO try1
     elif model_cfg.baseline == 'try1':
@@ -325,23 +413,47 @@ def baseline_model_load(model_cfg, device):
     
     # JINLOVESPHO try4
     elif model_cfg.baseline == 'try4':
+        
+        if model_cfg.vit_type == 'vit_base':
+            print('ENCODER: vit_base')
+            enc_layers=12
+            enc_hidden_dim=768
+            enc_mlp_dim=3072
+            enc_heads=12
+        
+        elif model_cfg.vit_type == 'vit_large':
+            print('ENCODER: vit_large')
+            enc_layers=24
+            enc_hidden_dim=1024
+            enc_mlp_dim=4096
+            enc_heads=16
+        
+        else:
+            print('vit type not valid')
+
         v = networks.ViT_Multiframe(    image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
                                         patch_size = 16,
                                         num_classes = 1000,
-                                        dim = 768,
-                                        depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
-                                        heads = 12,
-                                        mlp_dim = 3072,
+                                        dim = enc_hidden_dim,
+                                        depth = enc_layers,                     # transformer 의 layer(attention+ff) 개수 의미
+                                        heads = enc_heads,
+                                        mlp_dim = enc_mlp_dim,
                                         num_prev_frame=model_cfg.num_prev_frame,
                                         croco = (model_cfg.pretrained_weight == 'croco'))
         
         if model_cfg.pretrained_weight == 'croco':
-            croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
-            loaded_weight = {}
+            
+            if model_cfg.vit_type == 'vit_base':
+                croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+            elif model_cfg.vit_type == 'vit_large':
+                croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
+            loaded_weight = {}
+            
             for key, value in v.state_dict().items():
                 if 'transformer' in key:
                     if '0.norm' in key:
+                        breakpoint()
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm1.{key.split(".")[-1]}']
                     elif 'qkv' in key:
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.qkv.{key.split(".")[-1]}']
@@ -360,7 +472,7 @@ def baseline_model_load(model_cfg, device):
                 else:
                     print(key)
                     loaded_weight[key] = v.state_dict()[key]
-
+        
         else:
             loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
         
@@ -368,7 +480,8 @@ def baseline_model_load(model_cfg, device):
                 if key not in loaded_weight.keys():
                     loaded_weight[key] = loaded_weight['pos_embedding']
         
-        v.load_state_dict(loaded_weight)
+        is_load_complete = v.load_state_dict(loaded_weight)
+        print(is_load_complete)
         v.resize_pos_embed(192,640,device)
 
         breakpoint()
@@ -376,7 +489,7 @@ def baseline_model_load(model_cfg, device):
                         max_depth = model_cfg.max_depth,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
                         hooks=[2, 5, 8, 11],                    # hooks ?
-                        vit_features=768,                       # embed dim ? yes!
+                        vit_features=enc_hidden_dim,                       # embed dim ? yes!
                         use_readout='project',
                         num_prev_frame=model_cfg.num_prev_frame,
                         masking_ratio=model_cfg.masking_ratio,
@@ -384,27 +497,50 @@ def baseline_model_load(model_cfg, device):
                         cross_attn_depth = model_cfg.cross_attn_depth,
                         croco = (model_cfg.pretrained_weight == 'croco'),
                         )
-    
-    
-    # JINLOVESPHO
-    elif model_cfg.baseline == 'mdmc_try1':
+        
+    # JINLOVESPHO try5
+    elif model_cfg.baseline == 'try5':
+        
+        if model_cfg.vit_type == 'vit_base':
+            print('ENCODER: vit_base')
+            enc_layers=12
+            enc_hidden_dim=768
+            enc_mlp_dim=3072
+            enc_heads=12
+        
+        elif model_cfg.vit_type == 'vit_large':
+            print('ENCODER: vit_large')
+            enc_layers=24
+            enc_hidden_dim=1024
+            enc_mlp_dim=4096
+            enc_heads=16
+        
+        else:
+            print('vit type not valid')
+
         v = networks.ViT_Multiframe(    image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
                                         patch_size = 16,
                                         num_classes = 1000,
-                                        dim = 768,
-                                        depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
-                                        heads = 12,
-                                        mlp_dim = 3072,
+                                        dim = enc_hidden_dim,
+                                        depth = enc_layers,                     # transformer 의 layer(attention+ff) 개수 의미
+                                        heads = enc_heads,
+                                        mlp_dim = enc_mlp_dim,
                                         num_prev_frame=model_cfg.num_prev_frame,
                                         croco = (model_cfg.pretrained_weight == 'croco'))
         
         if model_cfg.pretrained_weight == 'croco':
-            croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
-            loaded_weight = {}
+            
+            if model_cfg.vit_type == 'vit_base':
+                croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+            elif model_cfg.vit_type == 'vit_large':
+                croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
+            loaded_weight = {}
+            
             for key, value in v.state_dict().items():
                 if 'transformer' in key:
                     if '0.norm' in key:
+                        # breakpoint()
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm1.{key.split(".")[-1]}']
                     elif 'qkv' in key:
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.qkv.{key.split(".")[-1]}']
@@ -423,7 +559,7 @@ def baseline_model_load(model_cfg, device):
                 else:
                     print(key)
                     loaded_weight[key] = v.state_dict()[key]
-
+        
         else:
             loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
         
@@ -431,15 +567,16 @@ def baseline_model_load(model_cfg, device):
                 if key not in loaded_weight.keys():
                     loaded_weight[key] = loaded_weight['pos_embedding']
         
-        v.load_state_dict(loaded_weight)
+        is_load_complete = v.load_state_dict(loaded_weight)
+        print(is_load_complete)
         v.resize_pos_embed(192,640,device)
 
         breakpoint()
-        model['depth'] = networks.pho_try1.Masked_DPT_Multiframe_Croco_Baseline_Try1(encoder=v,
+        model['depth'] = networks.mask_dpt_multiframe_croco_try5.Masked_DPT_Multiframe_Croco_Try5(encoder=v,
                         max_depth = model_cfg.max_depth,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
                         hooks=[2, 5, 8, 11],                    # hooks ?
-                        vit_features=768,                       # embed dim ? yes!
+                        vit_features=enc_hidden_dim,                       # embed dim ? yes!
                         use_readout='project',
                         num_prev_frame=model_cfg.num_prev_frame,
                         masking_ratio=model_cfg.masking_ratio,
@@ -466,7 +603,7 @@ def baseline_model_load(model_cfg, device):
         model[key].to(device)
         model[key].train()
         parameters_to_train += list(val.parameters())
-        
+
     return model, parameters_to_train
 
 

@@ -62,7 +62,7 @@ if __name__ == "__main__":
             lr_scheduler = optim.lr_scheduler.StepLR(optimizer, train_cfg.scheduler_step_size, 0.1)
             
         # data loader
-        train_loader, val_loader = initialize.data_loader(train_cfg.data, train_cfg.batch_size, train_cfg.num_workers)
+        train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_cfg.data, train_cfg.batch_size, train_cfg.num_workers)
                                         
         # set wandb
         if train_cfg.wandb:

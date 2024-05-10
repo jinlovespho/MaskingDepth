@@ -148,7 +148,7 @@ class ViT_Multiframe(nn.Module):
                     backbone, img_size=image_size, in_chans=channels, embed_dim=dim)
         elif croco:
             self.to_patch_embedding = nn.Sequential(
-                nn.Conv2d(3, 768, kernel_size=16, stride=16),
+                nn.Conv2d(3, dim, kernel_size=16, stride=16),
                 Rearrange('b c h w -> b (h w) c')
             )
         else:

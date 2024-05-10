@@ -128,7 +128,20 @@ class Conv4d(nn.Module):
         return out
 
 
-
+class Conv4d_Module(nn.Module):
+    def __init__(self, in_c, out_c, ks, pd, str):
+        super().__init__()
+        
+        self.conv4d_layer = Conv4d(in_c, out_c, kernel_size=ks, padding=pd, stride=str, dilation=(1,1,1,1), bias=True)
+        self.group_norm_layer = nn.GroupNorm(4, out_c ) 
+        self.relu = nn.ReLU()
+        
+    def forward(self, x):
+        x = self.conv4d_layer(x)
+        x = self.group_norm_layer(x)
+        x = self.relu(x)
+        return x 
+        
 if __name__ == "__main__":
     input = torch.randn(2, 1, 5, 5, 5, 5).cuda()
 
