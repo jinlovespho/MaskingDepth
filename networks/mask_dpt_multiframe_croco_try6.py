@@ -13,7 +13,7 @@ from .fuse_cross_attn import *
 from .conv4d import Conv4d_Module
 
 
-class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
+class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
     def __init__(
         self,
         *,
@@ -184,29 +184,29 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         
         # conv4d 
         conv4d_out = 128
-        self.conv4d_module1 = nn.Sequential( Conv4d_Module(in_c=self.encoder.heads, out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
+        self.conv4d_module1 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
         
-        self.conv4d_module2 = nn.Sequential( Conv4d_Module(in_c=self.encoder.heads, out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
+        self.conv4d_module2 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
         
-        self.conv4d_module3 = nn.Sequential( Conv4d_Module(in_c=self.encoder.heads, out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
+        self.conv4d_module3 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
         
-        self.conv4d_module4 = nn.Sequential( Conv4d_Module(in_c=self.encoder.heads, out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
+        self.conv4d_module4 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
         
         
         
         # cmap linear 
-        self.cmap1_linear = nn.Linear(conv4d_out, vit_features)    # (128,768)
-        self.cmap2_linear = nn.Linear(conv4d_out, vit_features)  
-        self.cmap3_linear = nn.Linear(conv4d_out, vit_features)  
-        self.cmap4_linear = nn.Linear(conv4d_out, vit_features)  
+        self.cmap1_linear = nn.Linear(26112, vit_features)    # (128,768)
+        self.cmap2_linear = nn.Linear(26112, vit_features)  
+        self.cmap3_linear = nn.Linear(26112, vit_features)  
+        self.cmap4_linear = nn.Linear(26112, vit_features)  
         
     def forward(self, img_frames, K = 1, mode=None):
         '''
@@ -312,41 +312,35 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         # c_attn_map1 = [ ca_map1[0], ca_map1[1], ca_map[2], ca_map[3] ]
         # ca_map1[0] : (b,head,n,n)
         
-        # average attn_maps per module  
-        avg_cmap1 = torch.stack(c_attn_map1, dim=0)
-        avg_cmap2 = torch.stack(c_attn_map2, dim=0)
-        avg_cmap3 = torch.stack(c_attn_map3, dim=0)
-        avg_cmap4 = torch.stack(c_attn_map4, dim=0)
-        
-        avg_cmap1 = avg_cmap1.mean(dim=0)   # (b,head,480,480)
-        avg_cmap2 = avg_cmap2.mean(dim=0)   # (b,12,480,480)
-        avg_cmap3 = avg_cmap3.mean(dim=0)
-        avg_cmap4 = avg_cmap4.mean(dim=0)
+        cat_ca_maps1 = torch.cat(c_attn_map1, dim=1)    # (b, 4*head, n,n )
+        cat_ca_maps2 = torch.cat(c_attn_map2, dim=1)
+        cat_ca_maps3 = torch.cat(c_attn_map3, dim=1)
+        cat_ca_maps4 = torch.cat(c_attn_map4, dim=1)
 
         # prepare conv4d input 
         img_h, img_w = self.encoder.get_image_size()
         patch_h, patch_w = self.encoder.get_patch_size() 
         num_patch_h, num_patch_w = img_h//patch_h, img_w//patch_w 
         
-        avg_cmap1 = avg_cmap1.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (b,head,h,w,h,w)
-        avg_cmap2 = avg_cmap2.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (8,12,12,40,12,40)
-        avg_cmap3 = avg_cmap3.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
-        avg_cmap4 = avg_cmap4.view(b, self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
+        cat_ca_maps1 = cat_ca_maps1.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (b,head,h,w,h,w)
+        cat_ca_maps2 = cat_ca_maps2.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (8,12,12,40,12,40)
+        cat_ca_maps3 = cat_ca_maps3.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
+        cat_ca_maps4 = cat_ca_maps4.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
         # avg_cmap1 = rearrange(avg_cmap1, 'b head (h1 w1) (h2 w2) -> b head h1 w1 h2 w2', h1=num_patch_h, h2=num_patch_h)
         
         # conv4d 
-        cmap1 = self.conv4d_module1(avg_cmap1)  # (b, out_c, h1,w1,h2,w2)
-        cmap2 = self.conv4d_module2(avg_cmap2)       
-        cmap3 = self.conv4d_module3(avg_cmap3)
-        cmap4 = self.conv4d_module4(avg_cmap4)
+        cmap1 = self.conv4d_module1(cat_ca_maps1)  # (b, out_c, h1,w1,h2,w2)
+        cmap2 = self.conv4d_module2(cat_ca_maps2)       
+        cmap3 = self.conv4d_module3(cat_ca_maps3)
+        cmap4 = self.conv4d_module4(cat_ca_maps4)
         
         bs, out_c, h1, w1, h2, w2 = cmap1.shape
         
-        cmap1 = cmap1.view(bs, out_c, h1, w1, -1).mean(-1).flatten(start_dim=2).permute(0,2,1)  # (b, n, out_c)
-        cmap2 = cmap2.view(bs, out_c, h1, w1, -1).mean(-1).flatten(start_dim=2).permute(0,2,1)
-        cmap3 = cmap3.view(bs, out_c, h1, w1, -1).mean(-1).flatten(start_dim=2).permute(0,2,1)
-        cmap4 = cmap4.view(bs, out_c, h1, w1, -1).mean(-1).flatten(start_dim=2).permute(0,2,1)
-
+        cmap1 = cmap1.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)   # (b,n, out_c*h2*w2)
+        cmap2 = cmap2.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)   # (b,480,26112)
+        cmap3 = cmap3.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)
+        cmap4 = cmap4.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)
+        
         lin_cmap1 = self.cmap1_linear(cmap1)    # (b,n,d)
         lin_cmap2 = self.cmap2_linear(cmap2)    # (b,480,768)
         lin_cmap3 = self.cmap3_linear(cmap3)

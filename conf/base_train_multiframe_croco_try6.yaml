@@ -2,7 +2,7 @@
 Train:
   wandb : True  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'pho_gpu3_kitti_bs4_mask00_enc(vit_B)_try5(conv4d128_gNorm_relu)(c_attn_out)'  # model names to save log file or wandb.
+  model_name: 'pho_gpu3_kitti_bs4_mask00_enc(vit_B)_try6(cat_ca_maps)'  # model names to save log file or wandb.
   wandb_log_path: '/media/dataset1/jinlovespho/log/multiframe'
   log_path: '/media/dataset1/jinlovespho/log/multiframe'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
@@ -16,7 +16,7 @@ Train:
   load_optim : False
   
   model: 
-    baseline: 'try5'               # ['baseline', 'try1', 'try2', , ]
+    baseline: 'try6'               # ['baseline', 'try1', 'try2', , ]
     vit_type: 'vit_base'               # ['vit_base', 'vit_large']        
     masking_ratio: 0.0                 # set masking ratio !
     num_frame_to_mask: 1                 # set num_frame_to_mask=2 to mask (t, t-1)frame 
