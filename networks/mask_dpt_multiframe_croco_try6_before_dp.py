@@ -12,22 +12,6 @@ from .croco_blocks import *
 from .fuse_cross_attn import *
 from .conv4d import Conv4d_Module
 
-import sys
-import pdb
-
-class ForkedPdb(pdb.Pdb):
-    """
-    PDB Subclass for debugging multi-processed code
-    Suggested in: https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess
-    """
-    def interaction(self, *args, **kwargs):
-        _stdin = sys.stdin
-        try:
-            sys.stdin = open('/dev/stdin')
-            pdb.Pdb.interaction(self, *args, **kwargs)
-        finally:
-            sys.stdin = _stdin
-
 
 class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
     def __init__(
@@ -240,8 +224,7 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
             tmp = self.encoder.dropout(tmp)
             tokenized_frames.append(tmp)
 
-            # poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16, frame.device))
-            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16))
+            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16, frame.device))
         
         # batch_size, length, dim, device
         b,n,dim = tokenized_frames[0].shape     # (8,480,768)
@@ -251,40 +234,31 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         num_p_msk = int(self.masking_ratio * n ) if mode == 0 else 0    # validation(mode=1) 이면 num_p_mask=0 으로 만들어서 unmask !
         
         # random masking index generation
-        idx_rnd = torch.rand(b,n).argsort()
+        idx_rnd = torch.rand(b,n, device=device).argsort()
         idx_msk, idx_umsk = idx_rnd[:,:num_p_msk], idx_rnd[:,num_p_msk:]
         idx_msk = idx_msk.sort().values
         idx_umsk = idx_umsk.sort().values
         idx_bs = torch.arange(b)[:,None]
         
-        # ForkedPdb().set_trace()
-        
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
         poses0_unmsk_tkn = poses[0][idx_bs, idx_umsk]
-        
-        # manually put cpu variables to gpu 
-        poses0_unmsk_tkn = poses0_unmsk_tkn.to(self.device)
-        poses[0] = poses[0].to(self.device)
-        poses[1] = poses[1].to(self.device)
 
         # masked tokens
         msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)   # einops 의 repeat 은 메모리 공유. 즉 다 바뀌어 
-        msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk) 
-        msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk) 
-        msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk) 
+        msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk)
+        msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk)
         
         # add positional embedding for masked tokens
-        
-        # ForkedPdb().set_trace()
         
         # t frame encoder
         glob1 = self.encoder.transformer(frame0_unmsk_tkn, poses0_unmsk_tkn)     # (8,192,768)
         glob1_layer_1 = self.encoder.transformer.features[0]                    # (8,192,768)
         glob1_layer_2 = self.encoder.transformer.features[1]      
         glob1_layer_3 = self.encoder.transformer.features[2]      
-        glob1_layer_4 = self.encoder.transformer.features[3]    # glob1 과 동일          
-        
+        glob1_layer_4 = self.encoder.transformer.features[3]    # glob1 과 동일 
+                    
         # t-1 frame encoder
         glob2 = self.encoder.transformer(tokenized_frames[1],poses[1])          # (8,480,768)
         glob2_layer_1 = self.encoder.transformer.features[0]                    # (8,480,768)
@@ -545,34 +519,16 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
 
-# class PositionGetter(object):
-#     """ return positions of patches """
-
-#     def __init__(self):
-#         self.cache_positions = {}
-        
-#     def __call__(self, b, h, w, device):
-#         # ForkedPdb().set_trace()
-        
-#         if not (h,w) in self.cache_positions:
-#             x = torch.arange(w, device=device)
-#             y = torch.arange(h, device=device)
-#             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
-#         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
-#         return pos
-    
 class PositionGetter(object):
     """ return positions of patches """
 
     def __init__(self):
         self.cache_positions = {}
         
-    def __call__(self, b, h, w):
-        # ForkedPdb().set_trace()
-        
+    def __call__(self, b, h, w, device):
         if not (h,w) in self.cache_positions:
-            x = torch.arange(w)
-            y = torch.arange(h)
+            x = torch.arange(w, device=device)
+            y = torch.arange(h, device=device)
             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
         return pos

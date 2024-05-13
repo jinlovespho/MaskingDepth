@@ -271,6 +271,7 @@ class PositionGetter(object):
             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (hw, 2)
         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
         return pos
+    
 
 class PatchEmbed(nn.Module):
     """ just adding _init_weights + position getter compared to timm.models.layers.patch_embed.PatchEmbed"""
