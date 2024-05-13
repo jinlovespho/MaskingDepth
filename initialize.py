@@ -43,9 +43,11 @@ def baseline_model_load(model_cfg, device):
                         depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
                         heads = 12,
                         mlp_dim = 3072)
-        v.load_state_dict(torch.load("./pretrained_weights/vit_base_384.pth"))
+        is_well_loaded=v.load_state_dict(torch.load("../pretrained_weights/vit_base_384.pth"))
+        print(is_well_loaded)
         v.resize_pos_embed(192,640)
 
+        breakpoint()
         model['depth'] = networks.Masked_DPT(encoder=v,
                         max_depth = model_cfg.max_depth,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
