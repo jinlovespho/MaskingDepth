@@ -1,24 +1,22 @@
 ##### Supervised Training ######
 Train:
-  wandb : True  # log with wandb
+  wandb : False  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'pho_gpu1234_kitti_bs8_mask00_enc(vit_B)_try6(cat_ca_maps)'  # model names to save log file or wandb.
-  wandb_log_path: '/media/dataset1/jinlovespho/log/multiframe'
-  log_path: '/media/dataset1/jinlovespho/log/multiframe'  # path to the log file, only works when the wandb option is False.
+  model_name: 'test_bbox'  # model names to save log file or wandb.
+  wandb_log_path: '/media/data1/jinlovespho/log/mfdepth'
+  log_path: '/media/data1/jinlovespho/log/mfdepth'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
   seed: 41
   start_epoch: 0
   end_epoch: 50
-  save_epoch_freq: 10
-  batch_size: 8
-  num_workers: 8
+  batch_size: 4
+  num_workers: 1
   lr: 1e-4
   K: 1                 # set number of K for K-way masking, 64 is the default
   load_optim : False
   
   model: 
-    baseline: 'try6'                   # ['baseline', 'try1', 'try2', , ]
-    vit_type: 'vit_base'               # ['vit_base', 'vit_large']        
+    baseline: "DPT"    # ["DPT", "monodepth2", "DPT_Multiframe", "DPT_Multiframe_mask_t", "DPT_Multiframe_CrossAttn_mask_t", "DPT_Multiframe_MultiCrossAttn_mask_t", "DPT_Multiframe_MultiCrossAttn_ColorLoss_mask_t"]
     masking_ratio: 0.0                 # set masking ratio !
     num_frame_to_mask: 1                 # set num_frame_to_mask=2 to mask (t, t-1)frame 
     cross_attn_depth: 4
@@ -31,8 +29,8 @@ Train:
   data:
     height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것, 원래 이미지 사이즈: (375,1242)
     width: 640 
-    dataset: 'kitti_depth_multiframe' #'kitti_depth_multiframe'
+    dataset: 'kitti_depth' #'kitti_depth_multiframe'
     num_prev_frame: 1                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것
     splits: 'eigen_temp'
-    data_path: '/media/dataset1/KITTI'
+    data_path: '/media/data1/KITTI'
     img_ext: '.jpg'

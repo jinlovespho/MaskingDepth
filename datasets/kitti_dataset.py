@@ -74,6 +74,41 @@ class KITTIDataset(MonoDataset):
 
         return color
 
+    # BJB EDIT
+    def get_Bbox(self, folder, frame_index, side, do_flip = False):
+        #file path
+        f_str = "{:010d}_box.txt".format(frame_index)
+        
+        box_path = os.path.join(self.data_path, folder,
+            "box_0{}".format(self.side_map[side]), f_str)
+
+        #read file
+        with open(box_path, 'r') as f:
+            boxes = []
+            
+            for line in f.readlines():
+                param = line.split(' ')
+                param[0] = int(param[0])        # class
+                param[1] = float(param[1])      # x1 left
+                param[2] = float(param[2])      # y1 top
+                param[3] = float(param[3])      # x2 right
+                param[4] = float(param[4])      # y2 bottom
+                
+                if do_flip:#box flip
+                    max_x = round(1 - param[1],4)
+                    min_x = round(1 - param[3],4)
+                    param[1] = min_x
+                    param[3] = max_x
+
+                if param[3]-param[1] > 0.2 or param[4]-param[2] > 0.2:
+                    boxes.append(param[:-1])   
+
+        # Fixed Batch Size
+        if len(boxes) >= self.MAX_BOX_NUM:
+            return torch.tensor(boxes[:self.MAX_BOX_NUM])
+        else:        
+            return torch.cat((torch.tensor(boxes), -torch.ones((self.MAX_BOX_NUM - len(boxes)), 5)), dim=0)
+
 
 class KITTIRAWDataset(KITTIDataset):
     """KITTI dataset which loads the original velodyne depth maps for ground truth

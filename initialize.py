@@ -533,9 +533,9 @@ def baseline_model_load(model_cfg, device):
         if model_cfg.pretrained_weight == 'croco':
             
             if model_cfg.vit_type == 'vit_base':
-                croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
             elif model_cfg.vit_type == 'vit_large':
-                croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
             loaded_weight = {}
             
@@ -563,7 +563,7 @@ def baseline_model_load(model_cfg, device):
                     loaded_weight[key] = v.state_dict()[key]
         
         else:
-            loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
+            loaded_weight = torch.load("../pretrained_weights/vit_base_384.pth", map_location=device)
         
             for key, value in v.state_dict().items():
                 if key not in loaded_weight.keys():
@@ -620,9 +620,9 @@ def baseline_model_load(model_cfg, device):
         if model_cfg.pretrained_weight == 'croco':
             
             if model_cfg.vit_type == 'vit_base':
-                croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
             elif model_cfg.vit_type == 'vit_large':
-                croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
             loaded_weight = {}
             
@@ -715,8 +715,8 @@ def data_loader(data_cfg, batch_size, num_workers):
     train_filenames = utils.readlines(fpath.format("train"))
     val_filenames   = utils.readlines(fpath.format("val"))
     
-    
-    # breakpoint()
+    print('DATASET: ', dataset)
+    breakpoint()
     if data_cfg.dataset == 'kitti_depth_multiframe':
         train_dataset = dataset(data_cfg.data_path, train_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
                                  gt_num = -1, is_train=True, img_ext=data_cfg.img_ext, num_prev_frame=data_cfg.num_prev_frame)

@@ -224,7 +224,7 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
             tmp = self.encoder.dropout(tmp)
             tokenized_frames.append(tmp)
 
-            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16))
+            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16, frame.device))
         
         # batch_size, length, dim, device
         b,n,dim = tokenized_frames[0].shape     # (8,480,768)
@@ -234,7 +234,7 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         num_p_msk = int(self.masking_ratio * n ) if mode == 0 else 0    # validation(mode=1) 이면 num_p_mask=0 으로 만들어서 unmask !
         
         # random masking index generation
-        idx_rnd = torch.rand(b,n).argsort()
+        idx_rnd = torch.rand(b,n, device=device).argsort()
         idx_msk, idx_umsk = idx_rnd[:,:num_p_msk], idx_rnd[:,num_p_msk:]
         idx_msk = idx_msk.sort().values
         idx_umsk = idx_umsk.sort().values
@@ -243,11 +243,6 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
         poses0_unmsk_tkn = poses[0][idx_bs, idx_umsk]
-        
-        # manually put cpu variables to gpu 
-        poses0_unmsk_tkn = poses0_unmsk_tkn.to(self.device)
-        poses[0] = poses[0].to(self.device)
-        poses[1] = poses[1].to(self.device)
 
         # masked tokens
         msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)   # einops 의 repeat 은 메모리 공유. 즉 다 바뀌어 
@@ -536,12 +531,10 @@ class PositionGetter(object):
     def __init__(self):
         self.cache_positions = {}
         
-    def __call__(self, b, h, w):
-        # ForkedPdb().set_trace()
-        
+    def __call__(self, b, h, w, device):
         if not (h,w) in self.cache_positions:
-            x = torch.arange(w)
-            y = torch.arange(h)
+            x = torch.arange(w, device=device)
+            y = torch.arange(h, device=device)
             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
         return pos
