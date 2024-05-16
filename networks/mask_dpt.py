@@ -234,7 +234,7 @@ class Masked_DPT(nn.Module):
         path_2 = self.scratch.refinenet2(path_3, layer_2_rn)
         path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
 
-        pred_depth = self.scratch.output_conv(path_1) * self.max_depth
+        pred_depth = self.scratch.output_conv(path_1) * self.max_depth  # self.max_depth=80 for kitti
         
         # pred_depth = (B,1,192,640)
         # features = len() = 4 = transformer 의 중간 layer outputs, (B,N,D)

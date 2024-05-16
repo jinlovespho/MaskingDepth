@@ -3,8 +3,8 @@ Train:
   wandb : False  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
   model_name: 'test_bbox'  # model names to save log file or wandb.
-  wandb_log_path: '/media/data1/jinlovespho/log/mfdepth'
-  log_path: '/media/data1/jinlovespho/log/mfdepth'  # path to the log file, only works when the wandb option is False.
+  wandb_log_path: '/mnt/ssd2/log/mfdepth/maskingdepth'
+  log_path: '/mnt/ssd2/log/mfdepth/maskingdepth'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
   seed: 41
   start_epoch: 0
@@ -32,5 +32,5 @@ Train:
     dataset: 'kitti_depth' #'kitti_depth_multiframe'
     num_prev_frame: 1                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것
     splits: 'eigen_temp'
-    data_path: '/media/data1/KITTI'
+    data_path: '/mnt/ssd2/dataset/KITTI'
     img_ext: '.jpg'

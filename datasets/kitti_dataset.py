@@ -76,11 +76,14 @@ class KITTIDataset(MonoDataset):
 
     # BJB EDIT
     def get_Bbox(self, folder, frame_index, side, do_flip = False):
+
         #file path
         f_str = "{:010d}_box.txt".format(frame_index)
         
         box_path = os.path.join(self.data_path, folder,
             "box_0{}".format(self.side_map[side]), f_str)
+        
+        # ForkedPdb().set_trace()
 
         #read file
         with open(box_path, 'r') as f:
@@ -93,21 +96,26 @@ class KITTIDataset(MonoDataset):
                 param[2] = float(param[2])      # y1 top
                 param[3] = float(param[3])      # x2 right
                 param[4] = float(param[4])      # y2 bottom
+                param[5] = float(param[5])      # confidence score
                 
                 if do_flip:#box flip
                     max_x = round(1 - param[1],4)
                     min_x = round(1 - param[3],4)
                     param[1] = min_x
                     param[3] = max_x
-
-                if param[3]-param[1] > 0.2 or param[4]-param[2] > 0.2:
-                    boxes.append(param[:-1])   
-
-        # Fixed Batch Size
+                
+                # width,height > 0.2 인 어느 정도 크기가 있는 bbox만 가져오고 싶은 것
+                # if param[3]-param[1] > 0.2 or param[4]-param[2] > 0.2:
+                #     boxes.append(param[:-1])   
+                boxes.append(param)
+             
+        # ForkedPdb().set_trace()       
+        # fix number of bboxes
+        self.MAX_BOX_NUM=50
         if len(boxes) >= self.MAX_BOX_NUM:
             return torch.tensor(boxes[:self.MAX_BOX_NUM])
         else:        
-            return torch.cat((torch.tensor(boxes), -torch.ones((self.MAX_BOX_NUM - len(boxes)), 5)), dim=0)
+            return torch.cat((torch.tensor(boxes), - torch.ones((self.MAX_BOX_NUM - len(boxes)), 6)), dim=0)
 
 
 class KITTIRAWDataset(KITTIDataset):

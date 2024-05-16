@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.cm as cm
 import PIL.Image as pil 
-
+import cv2 
 import utils
 
 def evaluate_metric(train_cfg, pred_depth, inputs):
@@ -76,6 +76,10 @@ def get_eval_dict(errors):
     return error_dict
 
 def eval_metric(pred_depths, gt_depths, data):
+    
+    # pred_depths [ (375,1242) . . . ]
+    # gt_depths   [ (375,1242) . . . ]
+    
     num_samples = len(pred_depths)
 
     silog = np.zeros(num_samples, np.float32)
@@ -88,15 +92,15 @@ def eval_metric(pred_depths, gt_depths, data):
     d2 = np.zeros(num_samples, np.float32)
     d3 = np.zeros(num_samples, np.float32)
     
-    # breakpoint()
-
     for i in range(num_samples):
 
         gt_depth = gt_depths[i]
         pred_depth = pred_depths[i]
         min_depth = 0.001
-        max_depth = (10.0  if data.dataset == 'nyu' else 80.0)
+        max_depth = (10.0  if data.dataset == 'nyu' else 80.0)  # 80
 
+        # clamp values of pred_depths to min_depth and max_depth
+        # predicted depth value 가 [min_depth, max_depth] 범위를 갖도록 조정
         pred_depth[pred_depth < min_depth] = min_depth
         pred_depth[pred_depth > max_depth] = max_depth
         pred_depth[np.isinf(pred_depth)] = max_depth
@@ -104,16 +108,21 @@ def eval_metric(pred_depths, gt_depths, data):
         gt_depth[np.isinf(gt_depth)] = 0
         gt_depth[np.isnan(gt_depth)] = 0
 
-        valid_mask = np.logical_and(gt_depth > min_depth, gt_depth < max_depth)
+        valid_mask = np.logical_and(gt_depth > min_depth, gt_depth < max_depth)     # (375,1242) : true/false mask
 
         gt_height, gt_width = gt_depth.shape
-        eval_mask = np.zeros(valid_mask.shape)
+        eval_mask = np.zeros(valid_mask.shape)  # (375,1242) filled with zeros
 
         if data.dataset == 'nyu':
             eval_mask[45:471, 41:601] = 1
         else:
-            eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1
+            # eval_mask[153:371, 44:1197]=255
+            # cv2.imwrite('../eval_mask_region.png', eval_mask)
+            
+            # kitti에서 eval 할 영역 지정
+            eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1   # eval_mask[153:371, 44:1197]
 
+        # 최종적으로 valid 한 영역만 계산 하는 mask
         valid_mask = np.logical_and(valid_mask, eval_mask)
         silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth[valid_mask], pred_depth[valid_mask])
     
@@ -125,13 +134,110 @@ def eval_metric(pred_depths, gt_depths, data):
 
     return abs_rel, sq_rel, rms, log_rms, d1, d2, d3
 
+
+def eval_metric_bbox(pred_depths, gt_depths, data, bbox_mask_depths):
+    
+    # pred_depths [ (375,1242) . . . ]
+    # gt_depths   [ (375,1242) . . . ]
+    
+    num_samples = len(pred_depths)
+
+    silog = np.zeros(num_samples, np.float32)
+    log10 = np.zeros(num_samples, np.float32)
+    rms = np.zeros(num_samples, np.float32)
+    log_rms = np.zeros(num_samples, np.float32)
+    abs_rel = np.zeros(num_samples, np.float32)
+    sq_rel = np.zeros(num_samples, np.float32)
+    d1 = np.zeros(num_samples, np.float32)
+    d2 = np.zeros(num_samples, np.float32)
+    d3 = np.zeros(num_samples, np.float32)
+    
+    for i in range(num_samples):
+
+        gt_depth = gt_depths[i]
+        pred_depth = pred_depths[i]
+        bbox_mask_depth = bbox_mask_depths[i]
+        
+        min_depth = 0.001
+        max_depth = (10.0  if data.dataset == 'nyu' else 80.0)  # 80
+
+        # clamp values of pred_depths to min_depth and max_depth
+        # predicted depth value 가 [min_depth, max_depth] 범위를 갖도록 조정
+        pred_depth[pred_depth < min_depth] = min_depth
+        pred_depth[pred_depth > max_depth] = max_depth
+        pred_depth[np.isinf(pred_depth)] = max_depth
+        
+        gt_depth[np.isinf(gt_depth)] = 0
+        gt_depth[np.isnan(gt_depth)] = 0
+
+        valid_mask = np.logical_and(gt_depth > min_depth, gt_depth < max_depth)     # (375,1242) : true/false mask
+
+        gt_height, gt_width = gt_depth.shape
+        eval_mask = np.zeros(valid_mask.shape)  # (375,1242) filled with zeros
+
+        if data.dataset == 'nyu':
+            eval_mask[45:471, 41:601] = 1
+        else:
+            # eval_mask[153:371, 44:1197]=255
+            # cv2.imwrite('../eval_mask_region.png', eval_mask)
+            
+            # kitti에서 eval 할 영역 지정
+            eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1   # eval_mask[153:371, 44:1197]
+
+        # 최종적으로 valid 한 영역만 계산 하는 mask
+        valid_mask = np.logical_and(valid_mask, eval_mask)
+        
+        # 추가로 bbox 영역만 계산하도록 mask 설정
+        valid_mask_bbox = np.logical_and(valid_mask, bbox_mask_depth)
+        # print( valid_mask.size - np.count_nonzero(valid_mask) )   # number of zeros in array
+
+        # tmp2 = np.uint8(valid_mask)*255
+        # tmp3 = np.uint8(valid_mask_bbox)*255
+        
+        # cv2.imwrite('../tmptmp2.png', tmp2)
+        # cv2.imwrite('../tmptmp3.png', tmp3)
+    
+        silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth[valid_mask_bbox], pred_depth[valid_mask_bbox])
+    
+    # nan 처리 mask 생성
+    nan_msk_silog = np.isnan(silog)
+    nan_msk_log10 = np.isnan(log10)
+    nan_msk_rms = np.isnan(rms)
+    nan_msk_log_rms = np.isnan(log_rms)
+    nan_msk_abs_rel = np.isnan(abs_rel)
+    nan_msk_sq_rel = np.isnan(sq_rel)
+    nan_msk_d1 = np.isnan(d1)
+    nan_msk_d2 = np.isnan(d2)
+    nan_msk_d3 = np.isnan(d3)
+    
+    # nan 제외한 값들만 남기기
+    silog = silog[~nan_msk_silog]
+    log10 = log10[~nan_msk_log10]
+    rms = rms[~nan_msk_rms]
+    log_rms = log_rms[~nan_msk_log_rms]
+    abs_rel = abs_rel[~nan_msk_abs_rel]
+    sq_rel = sq_rel[~nan_msk_sq_rel]
+    d1 = d1[~nan_msk_d1]
+    d2 = d2[~nan_msk_d2]
+    d3 = d3[~nan_msk_d3]
+    
+    print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
+        'd1', 'd2', 'd3', 'AbsRel', 'SqRel', 'RMSE', 'RMSElog', 'SILog', 'log10'))
+    print("{:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}".format(
+        d1.mean(), d2.mean(), d3.mean(),
+        abs_rel.mean(), sq_rel.mean(), rms.mean(), log_rms.mean(), silog.mean(), log10.mean()))
+
+    return abs_rel, sq_rel, rms, log_rms, d1, d2, d3
+
+
 def compute_errors(gt, pred):
-    # breakpoint()
-    thresh = np.maximum((gt / pred), (pred / gt))
+    
+    thresh = np.maximum((gt / pred), (pred / gt))   # np.array 꼴의 thresh에 nan 이 하나라도 있으면, thresh.mean() 할 경우 nan이 뜬다.
+    
     d1 = (thresh < 1.25).mean()
     d2 = (thresh < 1.25 ** 2).mean()
     d3 = (thresh < 1.25 ** 3).mean()
-
+    
     rmse = (gt - pred) ** 2
     rmse = np.sqrt(rmse.mean())
 

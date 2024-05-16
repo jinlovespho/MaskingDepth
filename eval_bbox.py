@@ -11,7 +11,7 @@ import wandb
 import initialize
 import utils
 import loss
-from eval import visualize, eval_metric, get_eval_dict
+from eval import visualize, eval_metric, get_eval_dict, eval_metric_bbox
 
 from torchvision.utils import save_image
 import torch.nn as nn
@@ -19,6 +19,7 @@ import numpy as np
 import cv2 
 
 from vit_rollout import rollout
+import torch.nn.functional as F
 
 TRAIN = 0
 EVAL  = 1
@@ -102,7 +103,47 @@ def pho_visualize_cross_attn_map(ca_module_num, iter_num, curr_frame, prev_frame
     if iter_num == 0 and ca_module_num ==1:
         cv2.imwrite(f'./vis_ca_map/try4_conv/vis_idx{vis_idx}_ca_map_curr.jpg', query_result)
     cv2.imwrite(f'./vis_ca_map/try4_conv/vis_idx{vis_idx}_mod{ca_module_num}_ca_map_prev.jpg', result )
+
+# Define a function to draw bounding boxes on an image
+def draw_boxes(image_tensor, boxes, color=(0, 255, 0), thickness=1):
     
+    coco_label_names=['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+    
+    images = []
+    masks=[]
+    tmp1=[]
+    tmp2=[]
+    for i, img_tensor in enumerate(image_tensor):
+        image = img_tensor.permute(1, 2, 0).cpu().numpy()
+        image = (image * 255).astype(np.uint8).copy()  # Convert to uint8
+        mask = np.zeros(image.shape[:2], dtype=np.uint8)  # Create an empty mask
+
+        for box in boxes[i]:
+            cls, h1, w1, h2, w2, confidence = box.tolist()
+            if cls > 0:   
+                x1, y1, x2, y2 = int(h1), int(w1), int(h2), int(w2)
+
+                # bbox
+                cv2.rectangle(image, (x1, y1), (x2, y2), color, thickness)
+                label_name = coco_label_names[int(cls)-1]
+                label = f"{label_name}"
+                cv2.putText(image, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, thickness)
+
+                # mask
+                cv2.rectangle(mask, (x1, y1), (x2, y2), (1), thickness=-1)  # Fill the box region with ones in the mask
+        
+        images.append(torch.tensor(image).permute(2, 0, 1).float())
+        masks.append(torch.tensor(mask).unsqueeze(0).float())
+    #     tmp1.append(torch.tensor(image).permute(2, 0, 1).float())
+    #     tmp2.append(torch.tensor(mask).unsqueeze(0).float())
+        
+    #     save_image(tmp1[0].float(), f'../tmp1.png', normalize=True)
+    #     save_image(tmp2[0].float(), f'../tmp2.png', normalize=True)
+
+    # breakpoint()
+    
+    return images,masks    
+
 
 if __name__ == "__main__":
     with open(args.conf, 'r') as f:
@@ -160,26 +201,36 @@ if __name__ == "__main__":
         with torch.no_grad():
             utils.model_mode(model,EVAL)
             
-            mod = model['depth'].module
-            
             # LOAD MODEL and VISUALIZE ATTENTION MAPS
-            # load_path = '/media/dataset1/jinlovespho/log/multiframe/pho_gpu2_kitti_bs4_mask00_fuse(try4a_conv4d_sum)/weights_10/depth.pth'
-            # loaded_weight = torch.load(load_path)
-            # load_result = model['depth'].module.load_state_dict(loaded_weight, strict=False)
+            load_path = '../pretrained_weights/dpt_singleframe_baseline_epoch20_depth.pth'
+            loaded_weight = torch.load(load_path)
+            load_result = model['depth'].module.load_state_dict(loaded_weight, strict=False)
+            print(load_result)
             
             eval_loss = 0
             eval_error = []
+            
             pred_depths = []
             gt_depths = []
-
+            bbox_mask_depths = []
+            
+            bbox_eval_error=[]
+            bbox_pred_depths=[]
+            bbox_gt_depths=[]
+            
             # validation loop
             for i, inputs in enumerate(tqdm(val_loader)):
+                  
+                # torchvision.utils.save_image(pred_depth_mask,"pred_depth_mask.png",normalize=True)
+                # pred_np = pred_depth.squeeze().cpu().numpy() * 500
+                # pred_np = pred_np.astype(np.uint16)
+                # cv2.imwrite(f"base_pred/pred_depth{i}.png", pred_np)
                 
-                breakpoint()
-                
+                gt_depth = inputs['depth_gt']
+                     
                 total_loss = 0
                 losses = {}
-            
+                
                 # multiframe validation
                 if train_cfg.data.dataset=='kitti_depth_multiframe':
                     for input in inputs:
@@ -187,10 +238,7 @@ if __name__ == "__main__":
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda
 
-                    if train_cfg.model.enable_color_loss:
-                        total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
-                    else:
-                        total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
+                    total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                                                            
                     gt_depth = inputs[0]['depth_gt']
                     gt_color = inputs[0]['color']
@@ -200,21 +248,81 @@ if __name__ == "__main__":
                     for key, ipt in inputs.items():
                         if type(ipt) == torch.Tensor:
                             inputs[key] = ipt.to(device)
-                    # with torch.cuda.amp.autocast(enabled=True):
+
                     total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
                     gt_depth = inputs['depth_gt']
-            
+                
                 # breakpoint()
                 eval_loss += total_loss
                 # pred_depth.squeeze(dim=1)은 tensor 로 (8,H,W) 이고. pred_depths 는 [] 리스트이다.
                 # pred_depths.extend( pred_depth )를 해주면 pred_depth 의 8개의 이미지들이 차례로 리스트로 들어가서 리스트 len은 개가 돼
                 # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
-                pred_depths.extend(pred_depth.squeeze(1).cpu().numpy())
-                gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
+                
+                # BBOX
+                b, c, h, w = inputs['depth_gt'].shape
 
-            # breakpoint()
+                # normalize [0,1] box coordinates to real image shape
+                inputs['box'][:,:,1] *= w
+                inputs['box'][:,:,3] *= w 
+                inputs['box'][:,:,2] *= h 
+                inputs['box'][:,:,4] *= h
+
+                # show boxes on real-size image
+                real_size_img = F.interpolate(inputs['color'], size=(h,w), mode='bilinear')     # (b,3,375,1242)
+                bbox_drawn_imgs, bbox_masks = draw_boxes(real_size_img, inputs['box'])            
+                
+                bbox_drawn_imgs_t = torch.stack(bbox_drawn_imgs).to(device)
+                bbox_masks_t= torch.stack(bbox_masks).to(device)
+                masked_img = bbox_drawn_imgs_t * bbox_masks_t
+                masked_pred = pred_depth * bbox_masks_t
+                masked_gtdepth = gt_depth * bbox_masks_t
+                
+                # breakpoint()
+                
+                # save bbox and gtdepth images every 50 iteration
+                if i%50 == 0:
+                    for j in range( b ):    # batch_size 만큼 loop
+                        save_img_name = f'{inputs["curr_folder"][j].split("/")[-1]}_{inputs["curr_frame"][j]}.png'
+                        save_image(bbox_drawn_imgs_t[j], f'../vis_bbox/{i}_{save_img_name}_bbox_drawn_img.png', normalize=True)
+                        save_image(gt_depth[j], f'../vis_bbox/{i}_{save_img_name}_gtdepth.png', normalize=True)
+                        save_image(bbox_masks_t[j], f'../vis_bbox/{i}_{save_img_name}_bbox_masks.png', normalize=True)
+                        save_image(masked_img[j], f'../vis_bbox/{i}_{save_img_name}_masked_img.png', normalize=True)
+                        save_image(pred_depth[j], f'../vis_bbox/{i}_{save_img_name}_pred_depth.png', normalize=True)
+                        save_image(masked_pred[j], f'../vis_bbox/{i}_{save_img_name}_masked_pred.png', normalize=True)
+                        save_image(masked_gtdepth[j], f'../vis_bbox/{i}_{save_img_name}_masked_gtdepth.png', normalize=True)
+                        
+
+                pred_depths.extend(pred_depth.squeeze(1).cpu().numpy()) # pred_depths=[ (375,1242), (374,1242)]
+                gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
+                bbox_mask_depths.extend(bbox_masks_t.squeeze(1).cpu().numpy())
+                
+                
+            # cv2.imwrite('../tmp1_pred_depths.png', pred_depths[0])
+            # cv2.imwrite('../tmp1_gt_depths.png', gt_depths[0]) 
+            # cv2.imwrite('../tmp1_bbox_mask_depths.png', bbox_mask_depths[0]*255) 
+            
+            # cv2.imwrite('../tmp2_pred_depths.png', pred_depths[100])
+            # cv2.imwrite('../tmp2_gt_depths.png', gt_depths[100]) 
+            # cv2.imwrite('../tmp2_bbox_mask_depths.png', bbox_mask_depths[100]*255) 
+            
+            # cv2.imwrite('../tmp3_pred_depths.png', pred_depths[300])
+            # cv2.imwrite('../tmp3_gt_depths.png', gt_depths[300]) 
+            # cv2.imwrite('../tmp3_bbox_mask_depths.png', bbox_mask_depths[300]*255) 
+            
             eval_error = eval_metric(pred_depths, gt_depths, train_cfg)  
             error_dict = get_eval_dict(eval_error)
-            error_dict["val_loss"] = eval_loss / len(val_loader)      
+            error_dict["val_loss"] = eval_loss / len(val_loader)  
+            print(error_dict)
+
+            bbox_eval_error = eval_metric_bbox(pred_depths, gt_depths, train_cfg, bbox_mask_depths)
+            bbox_error_dict = get_eval_dict(bbox_eval_error)
+            print(bbox_error_dict)
             
-            print(error_dict)          
+            breakpoint()
+            
+            if train_cfg.data.dataset=='kitti_depth_multiframe':
+                visualize(inputs[0], pred_depth, pred_depth_mask, pred_uncert, wandb) 
+            else:
+                visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb)  
+            
+            breakpoint()
