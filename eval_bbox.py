@@ -200,12 +200,13 @@ if __name__ == "__main__":
         #validation
         with torch.no_grad():
             utils.model_mode(model,EVAL)
-            
+              
             # LOAD MODEL and VISUALIZE ATTENTION MAPS
-            load_path = '../pretrained_weights/dpt_singleframe_baseline_epoch20_depth.pth'
+            load_path = train_cfg.model.my_load_path
             loaded_weight = torch.load(load_path)
             load_result = model['depth'].module.load_state_dict(loaded_weight, strict=False)
             print(load_result)
+            breakpoint()
             
             eval_loss = 0
             eval_error = []
@@ -215,19 +216,10 @@ if __name__ == "__main__":
             bbox_mask_depths = []
             
             bbox_eval_error=[]
-            bbox_pred_depths=[]
-            bbox_gt_depths=[]
             
             # validation loop
             for i, inputs in enumerate(tqdm(val_loader)):
                   
-                # torchvision.utils.save_image(pred_depth_mask,"pred_depth_mask.png",normalize=True)
-                # pred_np = pred_depth.squeeze().cpu().numpy() * 500
-                # pred_np = pred_np.astype(np.uint16)
-                # cv2.imwrite(f"base_pred/pred_depth{i}.png", pred_np)
-                
-                gt_depth = inputs['depth_gt']
-                     
                 total_loss = 0
                 losses = {}
                 
@@ -241,7 +233,10 @@ if __name__ == "__main__":
                     total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                                                            
                     gt_depth = inputs[0]['depth_gt']
-                    gt_color = inputs[0]['color']
+                    inputs_color = inputs[0]['color']
+                    inputs_box = inputs[0]['box']
+                    inputs_curr_folder = inputs[0]['curr_folder']
+                    inputs_curr_frame = inputs[0]['curr_frame']
                     
                 # singleframe validation
                 else:
@@ -250,26 +245,30 @@ if __name__ == "__main__":
                             inputs[key] = ipt.to(device)
 
                     total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
+                    
                     gt_depth = inputs['depth_gt']
-                
-                # breakpoint()
+                    inputs_color = inputs['color']
+                    inputs_box = inputs['box']
+                    inputs_curr_folder = inputs['curr_folder']
+                    inputs_curr_frame = inputs['curr_frame']
+                    
                 eval_loss += total_loss
                 # pred_depth.squeeze(dim=1)은 tensor 로 (8,H,W) 이고. pred_depths 는 [] 리스트이다.
                 # pred_depths.extend( pred_depth )를 해주면 pred_depth 의 8개의 이미지들이 차례로 리스트로 들어가서 리스트 len은 개가 돼
                 # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
-                
+
                 # BBOX
-                b, c, h, w = inputs['depth_gt'].shape
+                b, c, h, w = gt_depth.shape
 
                 # normalize [0,1] box coordinates to real image shape
-                inputs['box'][:,:,1] *= w
-                inputs['box'][:,:,3] *= w 
-                inputs['box'][:,:,2] *= h 
-                inputs['box'][:,:,4] *= h
+                inputs_box[:,:,1] *= w
+                inputs_box[:,:,3] *= w 
+                inputs_box[:,:,2] *= h 
+                inputs_box[:,:,4] *= h
 
                 # show boxes on real-size image
-                real_size_img = F.interpolate(inputs['color'], size=(h,w), mode='bilinear')     # (b,3,375,1242)
-                bbox_drawn_imgs, bbox_masks = draw_boxes(real_size_img, inputs['box'])            
+                real_size_img = F.interpolate(inputs_color, size=(h,w), mode='bilinear')     # (b,3,375,1242)
+                bbox_drawn_imgs, bbox_masks = draw_boxes(real_size_img, inputs_box)            
                 
                 bbox_drawn_imgs_t = torch.stack(bbox_drawn_imgs).to(device)
                 bbox_masks_t= torch.stack(bbox_masks).to(device)
@@ -277,25 +276,26 @@ if __name__ == "__main__":
                 masked_pred = pred_depth * bbox_masks_t
                 masked_gtdepth = gt_depth * bbox_masks_t
                 
-                # breakpoint()
-                
+                save_img_path = f'../vis_bbox/{train_cfg.model.save_folder_name}'
+                if not os.path.exists(save_img_path):
+                    os.makedirs(save_img_path)
+                             
                 # save bbox and gtdepth images every 50 iteration
                 if i%50 == 0:
                     for j in range( b ):    # batch_size 만큼 loop
-                        save_img_name = f'{inputs["curr_folder"][j].split("/")[-1]}_{inputs["curr_frame"][j]}.png'
-                        save_image(bbox_drawn_imgs_t[j], f'../vis_bbox/{i}_{save_img_name}_bbox_drawn_img.png', normalize=True)
-                        save_image(gt_depth[j], f'../vis_bbox/{i}_{save_img_name}_gtdepth.png', normalize=True)
-                        save_image(bbox_masks_t[j], f'../vis_bbox/{i}_{save_img_name}_bbox_masks.png', normalize=True)
-                        save_image(masked_img[j], f'../vis_bbox/{i}_{save_img_name}_masked_img.png', normalize=True)
-                        save_image(pred_depth[j], f'../vis_bbox/{i}_{save_img_name}_pred_depth.png', normalize=True)
-                        save_image(masked_pred[j], f'../vis_bbox/{i}_{save_img_name}_masked_pred.png', normalize=True)
-                        save_image(masked_gtdepth[j], f'../vis_bbox/{i}_{save_img_name}_masked_gtdepth.png', normalize=True)
+                        save_img_name = f'{inputs_curr_folder[j].split("/")[-1]}_{inputs_curr_frame[j]}'
+                        save_image(bbox_drawn_imgs_t[j], f'{save_img_path}/{i}_{save_img_name}_bbox_drawn_img.png', normalize=True)
+                        save_image(gt_depth[j], f'{save_img_path}/{i}_{save_img_name}_gtdepth.png', normalize=True)
+                        save_image(bbox_masks_t[j], f'{save_img_path}/{i}_{save_img_name}_bbox_masks.png', normalize=True)
+                        save_image(masked_img[j], f'{save_img_path}/{i}_{save_img_name}_masked_img.png', normalize=True)
+                        save_image(pred_depth[j], f'{save_img_path}/{i}_{save_img_name}_pred_depth.png', normalize=True)
+                        save_image(masked_pred[j], f'{save_img_path}/{i}_{save_img_name}_masked_pred.png', normalize=True)
+                        save_image(masked_gtdepth[j], f'{save_img_path}/{i}_{save_img_name}_masked_gtdepth.png', normalize=True)
                         
 
                 pred_depths.extend(pred_depth.squeeze(1).cpu().numpy()) # pred_depths=[ (375,1242), (374,1242)]
                 gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
                 bbox_mask_depths.extend(bbox_masks_t.squeeze(1).cpu().numpy())
-                
                 
             # cv2.imwrite('../tmp1_pred_depths.png', pred_depths[0])
             # cv2.imwrite('../tmp1_gt_depths.png', gt_depths[0]) 
@@ -311,18 +311,28 @@ if __name__ == "__main__":
             
             eval_error = eval_metric(pred_depths, gt_depths, train_cfg)  
             error_dict = get_eval_dict(eval_error)
-            error_dict["val_loss"] = eval_loss / len(val_loader)  
+            # error_dict["val_loss"] = eval_loss / len(val_loader)  
             print(error_dict)
 
             bbox_eval_error = eval_metric_bbox(pred_depths, gt_depths, train_cfg, bbox_mask_depths)
             bbox_error_dict = get_eval_dict(bbox_eval_error)
             print(bbox_error_dict)
+
+            with open(f'{save_img_path}/result.txt', 'w') as f:
+                f.write('------------------full eval metric------------------\n')
+                for key, val in error_dict.items():
+                    f.write(f'{key}: {np.round(val,5)} \n')
+                
+                f.write('\n')
+                f.write('------------------bbox eval metric------------------\n')
+                for key, val in bbox_error_dict.items():
+                    f.write(f'{key}: {np.round(val,5)} \n')
             
             breakpoint()
+            print('FINISHED')
             
-            if train_cfg.data.dataset=='kitti_depth_multiframe':
-                visualize(inputs[0], pred_depth, pred_depth_mask, pred_uncert, wandb) 
-            else:
-                visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb)  
+            # if train_cfg.data.dataset=='kitti_depth_multiframe':
+            #     visualize(inputs[0], pred_depth, pred_depth_mask, pred_uncert, wandb) 
+            # else:
+            #     visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb)  
             
-            breakpoint()

@@ -171,7 +171,7 @@ def baseline_model_load(model_cfg, device):
         if model_cfg.pretrained_weight == 'croco':
             
             if model_cfg.vit_type == 'vit_base':
-                croco_weight = torch.load('./CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
             elif model_cfg.vit_type == 'vit_large':
                 croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
@@ -180,7 +180,6 @@ def baseline_model_load(model_cfg, device):
             for key, value in v.state_dict().items():
                 if 'transformer' in key:
                     if '0.norm' in key:
-                        breakpoint()
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm1.{key.split(".")[-1]}']
                     elif 'qkv' in key:
                         loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.qkv.{key.split(".")[-1]}']

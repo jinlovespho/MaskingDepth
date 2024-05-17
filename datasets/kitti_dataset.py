@@ -289,6 +289,7 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                 inputs['curr_folder']=folder
                 inputs['curr_frame']=start_idx       
                 inputs["color"] = self.get_color(folder, start_idx, side, do_flip)
+                inputs["box"] = self.get_Bbox(folder, frame_index, side, do_flip)
                 
                 K = self.K.copy()
                 K[0, :] *= self.width 

@@ -1,0 +1,17 @@
+------------------full eval metric------------------
+de/abs_rel: 0.07084 
+de/sq_rel: 0.32796 
+de/rms: 3.17779 
+de/log_rms: 0.10962 
+da/a1: 0.9408 
+da/a2: 0.9899 
+da/a3: 0.99764 
+
+------------------bbox eval metric------------------
+de/abs_rel: 0.09383 
+de/sq_rel: 0.6842 
+de/rms: 4.21963 
+de/log_rms: 0.13785 
+da/a1: 0.90665 
+da/a2: 0.9783 
+da/a3: 0.99316 
