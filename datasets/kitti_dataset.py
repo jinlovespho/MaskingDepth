@@ -16,6 +16,8 @@ import torch
 from .kitti_utils import generate_depth_map
 from .mono_dataset import MonoDataset
 
+import pykitti
+
 import sys
 import pdb
 
@@ -283,13 +285,34 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
             if start_idx < 5:
                 start_idx = 5 
                                  
-            for _ in range(num_frames):
-                # ForkedPdb().set_trace()                
+            for _ in range(num_frames):             
                 inputs={}
                 inputs['curr_folder']=folder
                 inputs['curr_frame']=start_idx       
                 inputs["color"] = self.get_color(folder, start_idx, side, do_flip)
-                inputs["box"] = self.get_Bbox(folder, frame_index, side, do_flip)
+                inputs["box"] = self.get_Bbox(folder, start_idx, side, do_flip)
+                
+                # MAGNET
+                # preparation for extrinsic matrix
+                dataset_path = self.data_path
+                date = line[0].split('/')[0]
+                drive = line[0].split('/')[1].split('_')[-2] 
+                p_data = pykitti.raw(dataset_path, date, drive, frames=[start_idx], imtype='jpg')
+        
+                # ForkedPdb().set_trace()
+                # cam intrinsics
+                cam_intrins = self.get_cam_intrinsics(p_data)
+                inputs['ray'] = cam_intrins['unit_ray_array_2D']
+                inputs['intM'] = cam_intrins['intM']
+                # ForkedPdb().set_trace()
+                
+                # cam extrinsic (pose)
+                pose = p_data.oxts[0].T_w_imu
+                M_imu2cam = p_data.calib.T_cam2_imu
+                extM = np.matmul(M_imu2cam, np.linalg.inv(pose))
+                inputs['extM'] = extM
+                
+                # ForkedPdb().set_trace()  
                 
                 K = self.K.copy()
                 K[0, :] *= self.width 
@@ -316,6 +339,7 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
 
                 inputs_lst.append(inputs)
                 
+                # for loop 안에서 start_idx 를 줄여가서 이전 frame 들을 가져오는 것
                 start_idx -= 1
                 
                 if start_idx < 5:

@@ -219,6 +219,8 @@ if __name__ == "__main__":
             
             # validation loop
             for i, inputs in enumerate(tqdm(val_loader)):
+                
+                # breakpoint()
                   
                 total_loss = 0
                 losses = {}

@@ -22,6 +22,7 @@ import torch.utils.data as data
 from torchvision import transforms
 import torchvision.utils
 from  .autoaugment import rand_augment_transform, Cutout, _rotate_level_to_arg
+import pykitti
 
 import sys
 import pdb
@@ -86,6 +87,17 @@ class MonoDataset(data.Dataset):
         self.loader = pil_loader
         self.to_tensor = transforms.ToTensor()
         
+        # Magnet 에서 가져와 O
+        # image resolution
+        # 여기를 제대로 한지 모르겠네.. 나중에 다시 봐야 O
+        self.img_H = 375
+        self.img_W = 1242
+        self.dpv_H = self.height
+        self.dpv_W = self.width
+        # ray array
+        self.ray_array = self.get_ray_array()
+        
+        
         # We need to specify augmentations differently in newer versions of torchvision.
         # We first try the newer tuple version; if this fails we fall back to scalars
         try:
@@ -140,6 +152,55 @@ class MonoDataset(data.Dataset):
     def __len__(self):
         return len(self.filenames)
 
+    # ray array used to back-project depth-map into camera-centered coordinates
+    def get_ray_array(self):
+        ray_array = np.ones((self.dpv_H, self.dpv_W, 3))
+        x_range = np.arange(self.dpv_W)
+        y_range = np.arange(self.dpv_H)
+        x_range = np.concatenate([x_range.reshape(1, self.dpv_W)] * self.dpv_H, axis=0)
+        y_range = np.concatenate([y_range.reshape(self.dpv_H, 1)] * self.dpv_W, axis=1)
+        ray_array[:, :, 0] = x_range + 0.5
+        ray_array[:, :, 1] = y_range + 0.5
+        return ray_array
+    
+    # get camera intrinscs - jinlovespho - added from magnet
+    def get_cam_intrinsics(self, p_data):
+
+        raw_img_size = p_data.get_cam2(0).size
+        raw_W = int(raw_img_size[0])
+        raw_H = int(raw_img_size[1])
+
+        top_margin = int(raw_H - 352)
+        left_margin = int((raw_W - 1216) / 2)
+
+        # original intrinsic matrix (4X4)
+        IntM_ = p_data.calib.K_cam2
+
+        # updated intrinsic matrix
+        IntM = np.zeros((3, 3))
+        IntM[2, 2] = 1.
+        IntM[0, 0] = IntM_[0, 0] * (self.dpv_W / float(self.img_W))
+        IntM[1, 1] = IntM_[1, 1] * (self.dpv_H / float(self.img_H))
+        IntM[0, 2] = (IntM_[0, 2] - left_margin) * (self.dpv_W / float(self.img_W))
+        IntM[1, 2] = (IntM_[1, 2] - top_margin) * (self.dpv_H / float(self.img_H))
+
+        # pixel to ray array
+        pixel_to_ray_array = np.copy(self.ray_array)
+        pixel_to_ray_array[:, :, 0] = ((pixel_to_ray_array[:, :, 0] * (self.img_W / float(self.dpv_W)))
+                                       - IntM_[0, 2] + left_margin) / IntM_[0, 0]
+        pixel_to_ray_array[:, :, 1] = ((pixel_to_ray_array[:, :, 1] * (self.img_H / float(self.dpv_H)))
+                                       - IntM_[1, 2] + top_margin) / IntM_[1, 1]
+
+        pixel_to_ray_array_2D = np.reshape(np.transpose(pixel_to_ray_array, axes=[2, 0, 1]), [3, -1])
+        pixel_to_ray_array_2D = torch.from_numpy(pixel_to_ray_array_2D.astype(np.float32))
+
+        cam_intrinsics = {
+            'unit_ray_array_2D': pixel_to_ray_array_2D,
+            'intM': torch.from_numpy(IntM.astype(np.float32))
+        }
+        return cam_intrinsics
+    
+
     def __getitem__(self, index):
         """Returns a single training item from the dataset as a dictionary.
  
@@ -188,7 +249,29 @@ class MonoDataset(data.Dataset):
             inputs["box"] = self.get_Bbox(folder, frame_index, side, do_flip)
             inputs['curr_folder']=folder
             inputs['curr_frame']=frame_index
+            
+            # MAGNET
+            # preparation for extrinsic matrix
+            dataset_path = self.data_path
+            date = line[0].split('/')[0]
+            drive = line[0].split('/')[1].split('_')[-2] 
+            p_data = pykitti.raw(dataset_path, date, drive, frames=[frame_index], imtype='jpg')
+     
+            # ForkedPdb().set_trace()
+            # cam intrinsics
+            cam_intrins = self.get_cam_intrinsics(p_data)
+            inputs['ray'] = cam_intrins['unit_ray_array_2D']
+            inputs['intM'] = cam_intrins['intM']
+            # ForkedPdb().set_trace()
+            
+            # cam extrinsic (pose)
+            pose = p_data.oxts[0].T_w_imu
+            M_imu2cam = p_data.calib.T_cam2_imu
+            extM = np.matmul(M_imu2cam, np.linalg.inv(pose))
+            inputs['extM'] = extM
         
+            # ForkedPdb().set_trace()
+            
             K = self.K.copy()
             K[0, :] *= self.width 
             K[1, :] *= self.height
@@ -204,7 +287,6 @@ class MonoDataset(data.Dataset):
             stereo_T[0, 3] = side_sign * baseline_sign * 0.1
 
             inputs["stereo_T"] = torch.from_numpy(stereo_T)
-            
             
             
         self.preprocess(inputs)
