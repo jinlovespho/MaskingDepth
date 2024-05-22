@@ -175,6 +175,8 @@ class MonoDataset(data.Dataset):
 
         # original intrinsic matrix (4X4)
         IntM_ = p_data.calib.K_cam2
+        
+        # ForkedPdb().set_trace()
 
         # updated intrinsic matrix
         IntM = np.zeros((3, 3))

@@ -303,14 +303,16 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                 # cam intrinsics
                 cam_intrins = self.get_cam_intrinsics(p_data)
                 inputs['ray'] = cam_intrins['unit_ray_array_2D']
-                inputs['intM'] = cam_intrins['intM']
-                # ForkedPdb().set_trace()
-                
+                tmp_intM = torch.zeros(4,4)
+                tmp_intM[:3,:3] = cam_intrins['intM']
+                tmp_intM[-1,-1] = 1.0
+                inputs['intM'] = tmp_intM
+            
                 # cam extrinsic (pose)
-                pose = p_data.oxts[0].T_w_imu
-                M_imu2cam = p_data.calib.T_cam2_imu
-                extM = np.matmul(M_imu2cam, np.linalg.inv(pose))
-                inputs['extM'] = extM
+                pose = p_data.oxts[0].T_w_imu       # imu -> w
+                M_imu2cam = p_data.calib.T_cam2_imu # imu -> cam2
+                extM = np.matmul(M_imu2cam, np.linalg.inv(pose))    # w->cam2: imu->cam2, w->imu
+                inputs['extM'] = extM.astype(np.float32)
                 
                 # ForkedPdb().set_trace()  
                 
@@ -322,6 +324,8 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
 
                 inputs["K"] = torch.from_numpy(K)
                 inputs["inv_K"] = torch.from_numpy(inv_K)
+                
+                # ForkedPdb().set_trace() 
 
                 stereo_T = np.eye(4, dtype=np.float32)
                 baseline_sign = -1 if do_flip else 1

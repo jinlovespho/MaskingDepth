@@ -84,7 +84,7 @@ if __name__ == "__main__":
         print('Start Training')
         for epoch in range(train_cfg.start_epoch, train_cfg.end_epoch):
             utils.model_mode(model,TRAIN)  
-        
+            
             # train
             print(f'Training progress(ep:{epoch+1})')
             for i, inputs in enumerate(tqdm(train_loader)): 
@@ -93,7 +93,8 @@ if __name__ == "__main__":
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda  
-                            
+                        
+                    # breakpoint()
                     if train_cfg.model.enable_color_loss:
                         total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
                     else:

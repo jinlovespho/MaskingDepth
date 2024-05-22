@@ -117,9 +117,8 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     for input in inputs:
         for key, val in input.items():
            inputs_dic[key].append(val)
-
-    
-    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic['color'], model, train_cfg.K,  mode)
+           
+    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic, model, train_cfg.K,  mode)
 
     # breakpoint()
     pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
@@ -156,8 +155,8 @@ def model_forward_multiframe_colorLoss(inputs, model, K=1, mode=None):
     return pred_depth, pred_color, features, fusion_features
 
 # JINLOVESPHO
-def model_forward_multiframe(inputs, model, K=1, mode=None):  
-    pred_depth, features, fusion_features = model['depth'](inputs, K, mode)
+def model_forward_multiframe(inputs_dic, model, K=1, mode=None):  
+    pred_depth, features, fusion_features = model['depth'](inputs_dic, K, mode)
     return pred_depth, features, fusion_features
 
 
