@@ -2,16 +2,16 @@
 Train:
   wandb : False  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
-  model_name: 'pho_local_kitti_bs8_croco(vit_B)_costvolume_try1'  # model names to save log file or wandb.
-  wandb_log_path: '/mnt/ssd2/log/mfdepth/maskingdepth'
-  log_path: '/mnt/ssd2/log/mfdepth/maskingdepth'  # path to the log file, only works when the wandb option is False.
+  model_name: 'pho_server11_gpu1234_kitti_bs8_croco(vit_B)_costvolume_try1'  # model names to save log file or wandb.
+  wandb_log_path: '/media/dataset1/jinlovespho/log/multiframe'
+  log_path: '/media/dataset1/jinlovespho/log/multiframe'  # path to the log file, only works when the wandb option is False.
   use_cuda: True
   seed: 41
   start_epoch: 0
   end_epoch: 50
   save_epoch_freq: 5
-  batch_size: 2
-  num_workers: 1
+  batch_size: 8
+  num_workers: 8
   lr: 1e-4
   K: 1                 # set number of K for K-way masking, 64 is the default
   load_optim : False
@@ -34,5 +34,5 @@ Train:
     dataset: 'kitti_depth_multiframe' #'kitti_depth_multiframe'
     num_prev_frame: 1                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것
     splits: 'eigen_temp'
-    data_path: '/mnt/ssd2/dataset/KITTI'
+    data_path: '/media/dataset1/KITTI'
     img_ext: '.jpg'

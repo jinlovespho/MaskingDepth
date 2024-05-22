@@ -10,6 +10,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import sys
+import pdb
+
+class ForkedPdb(pdb.Pdb):
+    """
+    PDB Subclass for debugging multi-processed code
+    Suggested in: https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
 
 def disp_to_depth(disp, min_depth, max_depth):
     """Convert network's sigmoid output into depth prediction
@@ -170,6 +185,7 @@ class BackprojectDepth(nn.Module):
         '''
         self.pix_coords: (b,3,h*w) 이고, 3은 homogenous coordinate (x,y,1) 이기에 3차원인 것.
         '''
+        # ForkedPdb().set_trace()
         cam_points = torch.matmul(inv_K[:, :3, :3], self.pix_coords)
         cam_points = depth.view(self.batch_size, 1, -1) * cam_points
         cam_points = torch.cat([cam_points, self.ones], 1)      # 다시 3차원에서 또 homogenous coordinate으로 만들기 위해 1 마지막에 추가
