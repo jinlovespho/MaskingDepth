@@ -127,11 +127,9 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     pred_uncert = None 
 
     if mode == EVAL:
-        pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic['color_aug'], model, K = train_cfg.K)
+        pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic, model, train_cfg.K, mode)
     else:
         pred_depth_mask = None
-
-
 
     #total_loss
     for loss in losses.values():
@@ -158,6 +156,8 @@ def model_forward_multiframe_colorLoss(inputs, model, K=1, mode=None):
 def model_forward_multiframe(inputs_dic, model, K=1, mode=None):  
     pred_depth, features, fusion_features = model['depth'](inputs_dic, K, mode)
     return pred_depth, features, fusion_features
+
+        
 
 
 ############################################################################## 

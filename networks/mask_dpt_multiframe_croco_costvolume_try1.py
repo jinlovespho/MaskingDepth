@@ -429,7 +429,11 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         img_frames[1] : previous t-1 image 
         '''
         
-        img_frames = inputs_dic['color']
+        if mode == 0:   # mode=TRAIN
+            img_frames = inputs_dic['color']
+        elif mode == 1: # mode=EVAL
+            img_frames = inputs_dic['color_aug']
+   
         img_intMs = inputs_dic['intM']
         img_extMs = inputs_dic['extM']
         

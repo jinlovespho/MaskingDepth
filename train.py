@@ -145,7 +145,6 @@ if __name__ == "__main__":
             #         module.register_forward_hook(lambda m,i,o: ca1_mod.append( o.detach().cpu() ) )
                     
             # breakpoint()
-            
 
             #validation
             with torch.no_grad():

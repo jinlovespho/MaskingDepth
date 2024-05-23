@@ -183,7 +183,7 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         # self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)             # only linear cAttnOut
         
         # conv4d 
-        conv4d_out = 256
+        conv4d_out = 64
         self.conv4d_module1 = nn.Sequential( Conv4d_Module(in_c=self.encoder.heads, out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
                                              Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
                                              Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
