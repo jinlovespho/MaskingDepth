@@ -554,16 +554,22 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         rel_pose = self.compute_rel_pose(img_extMs)     # [R|t]2->1 : 즉 cam1 space 가 기준이 됨.
         scaled_k, scaled_invk = self.compute_scaled_intMs(img_intMs)     # list of intrinsic matrix of [curr_frame(k1), prev_frame(k2)] and [curr_frame_invk1, prev_crame_invk2] 
         
-        # manydepth - warp features to find cost volume
-        cost_volume1, missing_mask1 = self.match_features(reshaped_2d_glob1_layer1, reshaped_2d_glob2_layer1.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
-        cost_volume2, missing_mask2 = self.match_features(reshaped_2d_glob1_layer2, reshaped_2d_glob2_layer2.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
-        cost_volume3, missing_mask3 = self.match_features(reshaped_2d_glob1_layer3, reshaped_2d_glob2_layer3.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
-        cost_volume4, missing_mask4 = self.match_features(reshaped_2d_glob1_layer4, reshaped_2d_glob2_layer4.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
-          
-        confidence_mask1 = self.compute_confidence_mask(cost_volume1.detach() * (1 - missing_mask1.detach()))  
-        confidence_mask2 = self.compute_confidence_mask(cost_volume2.detach() * (1 - missing_mask2.detach()))  
-        confidence_mask3 = self.compute_confidence_mask(cost_volume3.detach() * (1 - missing_mask3.detach()))  
-        confidence_mask4 = self.compute_confidence_mask(cost_volume4.detach() * (1 - missing_mask4.detach()))  
+        
+        
+        
+        breakpoint()
+        
+        with torch.no_grad():
+            # manydepth - warp features to find cost volume
+            cost_volume1, missing_mask1 = self.match_features(reshaped_2d_glob1_layer1, reshaped_2d_glob2_layer1.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
+            cost_volume2, missing_mask2 = self.match_features(reshaped_2d_glob1_layer2, reshaped_2d_glob2_layer2.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
+            cost_volume3, missing_mask3 = self.match_features(reshaped_2d_glob1_layer3, reshaped_2d_glob2_layer3.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
+            cost_volume4, missing_mask4 = self.match_features(reshaped_2d_glob1_layer4, reshaped_2d_glob2_layer4.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
+            
+            confidence_mask1 = self.compute_confidence_mask(cost_volume1.detach() * (1 - missing_mask1.detach()))  
+            confidence_mask2 = self.compute_confidence_mask(cost_volume2.detach() * (1 - missing_mask2.detach()))  
+            confidence_mask3 = self.compute_confidence_mask(cost_volume3.detach() * (1 - missing_mask3.detach()))  
+            confidence_mask4 = self.compute_confidence_mask(cost_volume4.detach() * (1 - missing_mask4.detach()))  
         
         cost_volume1 *= confidence_mask1.unsqueeze(1)   # (b,96,12,40)
         cost_volume2 *= confidence_mask2.unsqueeze(1)
