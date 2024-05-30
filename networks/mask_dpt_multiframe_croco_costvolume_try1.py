@@ -401,11 +401,11 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         k1 = img_intMs[0]   # curr frame intrinsic matrix K1    # (b,4,4)
         k2 = img_intMs[1]   # prev frame K2
         
-        scaled_k1 = k1 / 16                      # (b,4,4)
+        scaled_k1 = k1 / 1                      # (b,4,4)
         scaled_k1[:,-2,-2] = 1
         scaled_k1[:,-1,-1] = 1
         
-        scaled_k2 = k2 / 16 
+        scaled_k2 = k2 / 1
         scaled_k2[:,-2,-2] = 1
         scaled_k2[:,-1,-1] = 1
         
