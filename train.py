@@ -27,12 +27,11 @@ parser.add_argument("--conf",
 
 args = parser.parse_args()
 
-
 if __name__ == "__main__":
     with open(args.conf, 'r') as f:
         conf =  yaml.load(f, Loader=yaml.FullLoader)
         train_cfg = DotMap(conf['Train'])
-        device = torch.device("cuda" if train_cfg.use_cuda else "cpu")
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
         # seed 
         initialize.seed_everything(train_cfg.seed)
@@ -45,7 +44,7 @@ if __name__ == "__main__":
 
         #optimizer & scheduler
         encode_index = len(list(model['depth'].module.encoder.parameters()))
-        optimizer = optim.Adam([{"params": parameters_to_train[:encode_index], "lr": 1e-5}, 
+        optimizer = optim.Adam([{"params": parameters_to_train[:encode_index], "lr": 1e-5},     # backbone 의 lr만 specify
                                 {"params": parameters_to_train[encode_index:]}], float(train_cfg.lr))
         
         if train_cfg.load_optim:
@@ -81,37 +80,31 @@ if __name__ == "__main__":
                 
         
         step = 0
-        print('Start Training')
         for epoch in range(train_cfg.start_epoch, train_cfg.end_epoch):
             utils.model_mode(model,TRAIN)  
             
             # train
-            print(f'Training progress(ep:{epoch+1})')
-            for i, inputs in enumerate(tqdm(train_loader)): 
+            tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_cfg.end_epoch}')
+            for i, inputs in enumerate(tqdm_train): 
                 if train_cfg.data.dataset=='kitti_depth_multiframe':
                     for input in inputs:
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda  
                         
-                    # breakpoint()
-                    if train_cfg.model.enable_color_loss:
-                        total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
-                    else:
-                        total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
+                    total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
                                 
                 else:
                     for key, ipt in inputs.items():
                         if type(ipt) == torch.Tensor:
                             inputs[key] = ipt.to(device)
-                    # with torch.cuda.amp.autocast(enabled=True):
+
                     total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
                 
+                tqdm_train.set_postfix({'train_loss':f'{total_loss:.4f}'})
+                                       
                 # backward & optimizer
                 optimizer.zero_grad()
-                # scaler.scale(total_loss).backward()
-                # scaler.step(optimizer)
-                # scaler.update()
                 total_loss.backward()
                 optimizer.step()
                 
@@ -126,7 +119,7 @@ if __name__ == "__main__":
             
             # save model & optimzier (.pth)
             save_epoch_freq = int(train_cfg.save_epoch_freq)
-            if epoch % save_epoch_freq == save_epoch_freq-1:
+            if epoch+1 % save_epoch_freq == save_epoch_freq:
                 utils.save_component(train_cfg.log_path, train_cfg.model_name, epoch, model, optimizer)
 
             # breakpoint()
@@ -153,12 +146,9 @@ if __name__ == "__main__":
                 eval_error = []
                 pred_depths = []
                 gt_depths = []
-                # JINLOVESPHO
-                pred_colors = []
-                gt_colors= []
 
-                print(f'Validation progress(ep:{epoch+1})')
-                for i, inputs in enumerate(tqdm(val_loader)):
+                tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_cfg.end_epoch}')
+                for i, inputs in enumerate(tqdm_val):
                     
                     total_loss = 0
                     losses = {}
@@ -170,10 +160,7 @@ if __name__ == "__main__":
                                 if type(ipt) == torch.Tensor:
                                     input[key] = ipt.to(device)     # Place current and previous frames on cuda
 
-                        if train_cfg.model.enable_color_loss:
-                            total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
-                        else:
-                            total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
+                        total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                             
                         # breakpoint()
                         gt_depth = inputs[0]['depth_gt']
@@ -184,7 +171,7 @@ if __name__ == "__main__":
                         for key, ipt in inputs.items():
                             if type(ipt) == torch.Tensor:
                                 inputs[key] = ipt.to(device)
-                        # with torch.cuda.amp.autocast(enabled=True):
+
                         total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
                         gt_depth = inputs['depth_gt']
                 
@@ -211,12 +198,14 @@ if __name__ == "__main__":
                     if train_cfg.data.dataset=='kitti_depth_multiframe':
                         visualize(inputs[0], pred_depth, pred_depth_mask, pred_uncert, wandb) 
                     else:
-                        visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb)  
+                        visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb) 
                                    
                 else:
                     progress.write(f'########################### (epoch:{epoch+1}) validation ###########################\n') 
                     progress.write(f'{error_dict}\n') 
                     progress.write(f'####################################################################################\n') 
+                
+                # breakpoint()
 
         if not(train_cfg.wandb):
             progress.close()

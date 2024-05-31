@@ -144,7 +144,7 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
 
 # main network forward
 def model_forward(inputs, model, K=1):  
-    pred_depth, features, fusion_features = model['depth'](inputs, K)
+    pred_depth, features, fusion_features = model['depth'](inputs)
     return pred_depth, features, fusion_features
 
 # JINLOVESPHO
