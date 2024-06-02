@@ -2,21 +2,23 @@
 Train:
   wandb : True # log with wandb
   wandb_proj_name: '20240531_My_Depth_Try'
-  model_name: 'my_server5_gpu3_kitti_bs32_try1(pretrained_bnorm_resnet101)'  # model names to save log file or wandb.
+  model_name: 'my_server5_gpu3_kitti_bs16_try3b(pretrained_vitB_8)'  # model names to save log file or wandb.
   wandb_log_path: '/media/data1/jinlovespho/log/mfdepth'
   log_path: '/media/data1/jinlovespho/log/mfdepth'  # path to the log file, only works when the wandb option is False.
   seed: 41
   start_epoch: 0
   end_epoch: 50
-  save_epoch_freq: 50
-  batch_size: 32
+  save_epoch_freq: 25
+  batch_size: 16
   num_workers: 4
   lr: 1e-4
   K: 1                 # set number of K for K-way masking, 64 is the default
   
   model: 
-    baseline: 'my_try1'                   # ['baseline', 'try1', 'try2', , ]
-    enc_name: 'resnet101'      
+    baseline: 'my_try3b'                   # ['baseline', 'try1', 'try2', , ]
+    enc_name: 'vit_base_patch8_224'     
+    enc_is_pretrained: True
+    enc_hidden_dim: 768 
     masking_ratio: 0.0                 # set masking ratio !
     num_frame_to_mask: 1                 # set num_frame_to_mask=2 to mask (t, t-1)frame 
     cross_attn_depth: 4
@@ -27,7 +29,7 @@ Train:
 
   data:
     height: 192  # data 의 (height,width)=(192,640) 으로 reshape 한 것, 원래 이미지 사이즈: (375,1242)
-    width: 640 
+    width: 640
     dataset: 'kitti_depth'    #'kitti_depth_multiframe'
     num_prev_frame: 1                   # 현재 t_frame 기준으로 이전 두 개 frame: t-2_frame, t-1_frame을 가져오고 싶다는 것
     splits: 'eigen_temp'

@@ -8,8 +8,7 @@ import numpy as np
 
 import datasets
 import networks
-import networks.my_models
-import networks.my_models.my_unet
+from networks.my_models import *
 import utils
 from einops import rearrange
 
@@ -35,28 +34,57 @@ def seed_everything(seed=42):
 ########################    model load
 ############################################################################## 
 
-def baseline_model_load(model_cfg, device):
+def baseline_model_load(train_cfg, device):
     model = {}
     parameters_to_train = []
     
-    # JINLOVESPHO costvolume_try1
-    if model_cfg.baseline == 'my_try1':
-        
+    # try1 - unet w/o skip
+    if train_cfg.model.baseline == 'my_try1': 
+        print(train_cfg.model.enc_name)
         breakpoint()
-        model['depth'] = networks.my_models.my_unet.My_Unet(enc_name=model_cfg.encoder)
+        from networks.my_models.my_try1_unet import My_Unet
+        model['depth'] = My_Unet(train_cfg)
+        
+    # try2 - unet w/ skip
+    elif train_cfg.model.baseline == 'my_try2': 
+        print(train_cfg.model.enc_name)
+        breakpoint()
+        from networks.my_models.my_try2_unet_skip import My_Unet_Skip
+        model['depth'] = My_Unet_Skip(train_cfg)
+        
+    # try3 - vitB_16 encoder
+    elif train_cfg.model.baseline == 'my_try3': 
+        print(train_cfg.model.enc_name)
+        breakpoint()
+        from networks.my_models.my_try3_unet_vitb import My_Unet_Enc_VitB
+        model['depth'] = My_Unet_Enc_VitB(train_cfg)
+        
+    # try3a - vitB_14_dinov2 encoder
+    elif train_cfg.model.baseline == 'my_try3a': 
+        print(train_cfg.model.enc_name)
+        breakpoint()
+        from networks.my_models.my_try3a_unet_vitb_14_dino import My_Unet_Enc_VitB_Dinov2
+        model['depth'] = My_Unet_Enc_VitB_Dinov2(train_cfg)
+        
+    # try3b - vitB_8 encoder
+    elif train_cfg.model.baseline == 'my_try3b': 
+        print(train_cfg.model.enc_name)
+        breakpoint()
+        from networks.my_models.my_try3b_unet_vitb_8 import My_Unet_Enc_VitB_8
+        model['depth'] = My_Unet_Enc_VitB_8(train_cfg)
 
 
     # JINLOVESPHO costvolume_try1
-    elif model_cfg.baseline == 'costvolume_try1':
+    elif train_cfg.model.baseline == 'costvolume_try1':
         
-        if model_cfg.vit_type == 'vit_base':
+        if train_cfg.model.vit_type == 'vit_base':
             print('ENCODER: vit_base')
             enc_layers=12
             enc_hidden_dim=768
             enc_mlp_dim=3072
             enc_heads=12
         
-        elif model_cfg.vit_type == 'vit_large':
+        elif train_cfg.model.vit_type == 'vit_large':
             print('ENCODER: vit_large')
             enc_layers=24
             enc_hidden_dim=1024
@@ -73,14 +101,14 @@ def baseline_model_load(model_cfg, device):
                                         depth = enc_layers,                     # transformer 의 layer(attention+ff) 개수 의미
                                         heads = enc_heads,
                                         mlp_dim = enc_mlp_dim,
-                                        num_prev_frame=model_cfg.num_prev_frame,
-                                        croco = (model_cfg.pretrained_weight == 'croco'))
+                                        num_prev_frame=train_cfg.model.num_prev_frame,
+                                        croco = (train_cfg.model.pretrained_weight == 'croco'))
         
-        if model_cfg.pretrained_weight == 'croco':
+        if train_cfg.model.pretrained_weight == 'croco':
             
-            if model_cfg.vit_type == 'vit_base':
+            if train_cfg.model.vit_type == 'vit_base':
                 croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
-            elif model_cfg.vit_type == 'vit_large':
+            elif train_cfg.model.vit_type == 'vit_large':
                 croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
             loaded_weight = {}
@@ -121,24 +149,24 @@ def baseline_model_load(model_cfg, device):
 
         breakpoint()
         model['depth'] = networks.mask_dpt_multiframe_croco_costvolume_try1.Masked_DPT_Multiframe_Croco_Costvolume_Try1(encoder=v,
-                        max_depth = model_cfg.max_depth,
+                        max_depth = train_cfg.model.max_depth,
                         features=[96, 192, 384, 768],           # 무슨 feature ?
                         hooks=[2, 5, 8, 11],                    # hooks ?
                         vit_features=enc_hidden_dim,                       # embed dim ? yes!
                         use_readout='project',
-                        num_prev_frame=model_cfg.num_prev_frame,
-                        masking_ratio=model_cfg.masking_ratio,
-                        num_frame_to_mask=model_cfg.num_frame_to_mask,
-                        cross_attn_depth = model_cfg.cross_attn_depth,
-                        croco = (model_cfg.pretrained_weight == 'croco'),
+                        num_prev_frame=train_cfg.model.num_prev_frame,
+                        masking_ratio=train_cfg.model.masking_ratio,
+                        num_frame_to_mask=train_cfg.model.num_frame_to_mask,
+                        cross_attn_depth = train_cfg.model.cross_attn_depth,
+                        croco = (train_cfg.model.pretrained_weight == 'croco'),
                         )
     
     else:
         pass
     
-    if model_cfg.load_weight:
+    if train_cfg.model.load_weight:
         print("Loading Network weights")
-        depth_file = os.path.join(model_cfg.weight_path, 'depth.pth')
+        depth_file = os.path.join(train_cfg.model.weight_path, 'depth.pth')
         if os.path.isfile(depth_file):
             print("Success load depth weight")
             model_load_dict = torch.load(depth_file, map_location=device)

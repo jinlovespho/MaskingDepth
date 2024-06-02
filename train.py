@@ -40,7 +40,7 @@ if __name__ == "__main__":
         train_cfg.model.num_prev_frame=train_cfg.data.num_prev_frame
 
         #model_load
-        model, parameters_to_train = initialize.baseline_model_load(train_cfg.model, device)
+        model, parameters_to_train = initialize.baseline_model_load(train_cfg, device)
 
         #optimizer & scheduler
         encode_index = len(list(model['depth'].module.encoder.parameters()))

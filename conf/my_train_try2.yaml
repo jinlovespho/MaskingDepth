@@ -2,7 +2,7 @@
 Train:
   wandb : True # log with wandb
   wandb_proj_name: '20240531_My_Depth_Try'
-  model_name: 'my_server5_gpu3_kitti_bs32_try1(pretrained_bnorm_resnet101)'  # model names to save log file or wandb.
+  model_name: 'my_server5_gpu1_kitti_bs32_try2(pretrained_skip_resnet101)'  # model names to save log file or wandb.
   wandb_log_path: '/media/data1/jinlovespho/log/mfdepth'
   log_path: '/media/data1/jinlovespho/log/mfdepth'  # path to the log file, only works when the wandb option is False.
   seed: 41
@@ -15,7 +15,7 @@ Train:
   K: 1                 # set number of K for K-way masking, 64 is the default
   
   model: 
-    baseline: 'my_try1'                   # ['baseline', 'try1', 'try2', , ]
+    baseline: 'my_try2'                   # ['baseline', 'try1', 'try2', , ]
     enc_name: 'resnet101'      
     masking_ratio: 0.0                 # set masking ratio !
     num_frame_to_mask: 1                 # set num_frame_to_mask=2 to mask (t, t-1)frame 
