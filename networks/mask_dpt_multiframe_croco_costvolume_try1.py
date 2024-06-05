@@ -15,6 +15,9 @@ from .fuse_cross_attn import *
 from .conv4d import Conv4d_Module
 from .manydepth_layers import BackprojectDepth, Project3D
 
+from torchvision.utils import save_image
+import matplotlib.pyplot as plt 
+
 import sys
 import pdb
 
@@ -30,8 +33,7 @@ class ForkedPdb(pdb.Pdb):
             pdb.Pdb.interaction(self, *args, **kwargs)
         finally:
             sys.stdin = _stdin
-
-
+      
 class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
     def __init__(
         self,
@@ -242,8 +244,8 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         
         # prep for hypothesized depths
         self.depth_binning='linear'
-        min_depth_bin=0.1
-        max_depth_bin=10.0
+        min_depth_bin=0.12
+        max_depth_bin=6.02
         self.compute_depth_bins(min_depth_bin, max_depth_bin)
         
         self.cv1_linear = nn.Linear(self.num_depth_bins, vit_features)
@@ -276,9 +278,6 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         
         # breakpoint()
         self.warp_depths = torch.stack(self.warp_depths, 0).float()
-        if self.is_cuda:
-            self.warp_depths = self.warp_depths.cuda()
-        
         
        
     # manydepth - cost volume
@@ -301,7 +300,6 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         '''
         
         # breakpoint()
-        
         batch_cost_volume = []  # store all cost volumes of the batch
         cost_volume_masks = []  # store locations of '0's in cost volume for confidence
 
@@ -321,6 +319,7 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
             # breakpoint()
             # 2d point 들을 다시 3d point 로 back projection 을 한 것 
             # self.warp_depths: (96,1,48,160)
+            # ForkedPdb().set_trace()            
             world_points = self.backprojector(self.warp_depths, _invK)  # (96,4,7680)
 
             # loop through ref images adding to the current cost volume
@@ -350,9 +349,8 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
                     self.matching_width - 1)  # convert from (-1, 1) to pixel values
                 y_vals = (pix_locs[..., 1].detach() / 2 + 0.5) * (self.matching_height - 1)
 
-                edge_mask = (x_vals >= 2.0) * (x_vals <= self.matching_width - 2) * \
-                            (y_vals >= 2.0) * (y_vals <= self.matching_height - 2)
-                edge_mask = edge_mask.float()
+                edge_mask = (x_vals >= 2.0) * (x_vals <= self.matching_width - 2) * (y_vals >= 2.0) * (y_vals <= self.matching_height - 2)
+                edge_mask = edge_mask.float()   # bool to num
 
                 # masking of current image
                 current_mask = torch.zeros_like(edge_mask)
@@ -367,8 +365,6 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
                 cost_volume = cost_volume + diffs
                 counts = counts + (diffs > 0).float()
             
-            
-            # breakpoint()
             # average over lookup images
             cost_volume = cost_volume / (counts + 1e-7) # element wise division
 
@@ -389,25 +385,43 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
     
     def compute_rel_pose(self, img_extMs):
         
-        r_t_1 = img_extMs[0]    # current_frame cam pose [R|t]1
-        r_t_2 = img_extMs[1]    # previous frame cam pose [R|t]2
+        rt1 = img_extMs[0]    # current_frame cam pose [R|t]1
+        rt2 = img_extMs[1]    # previous frame cam pose [R|t]2
         
+        # r1 = rt1[0,:3,:3]   # (3,3)
+        # r2 = rt2[0,:3,:3]   # (3,1)
+        
+        # t1 = rt1[0,:3,3:]
+        # t2 = rt2[0,:3,3:]
+        
+        # r_2to1 = torch.matmul(r1, torch.inverse(r2))    # (3,3)
+        # t_2to1 = t2 - torch.matmul(r_2to1, t1)          # (3,1)
+        
+        # rel_pose = torch.zeros((4,4))
+        # rel_pose[:3,:4] = torch.cat([r_2to1, t_2to1], dim=-1)
+        # rel_pose[-1,-1] = 1.0
+           
         # [R|t]2->1 : 즉 cam1 space 옮기고 싶기에 ( 즉 cam1 (t-frame) 으로 warp)
         # [R|t]2->1 = [R|t]1 * inv( [R|t]2 ) 이다.
-        rel_pose = r_t_1 @ torch.linalg.inv(r_t_2)
-        
+        rel_pose_tmp = torch.matmul(rt1, torch.inverse(rt2))
+
+        rel_pose = torch.zeros_like(rel_pose_tmp)
+        rel_pose[:,:3,:] = rel_pose_tmp[:,:3,:]
+        rel_pose[:,-1,-1] = 1.0
+
         return rel_pose
+    
     
     def compute_scaled_intMs(self, img_intMs):
 
         k1 = img_intMs[0]   # curr frame intrinsic matrix K1    # (b,4,4)
         k2 = img_intMs[1]   # prev frame K2
         
-        scaled_k1 = k1 / 16                      # (b,4,4)
+        scaled_k1 = k1 / 8                      # (b,4,4)
         scaled_k1[:,-2,-2] = 1
         scaled_k1[:,-1,-1] = 1
         
-        scaled_k2 = k2 / 16 
+        scaled_k2 = k2 / 8 
         scaled_k2[:,-2,-2] = 1
         scaled_k2[:,-1,-1] = 1
         
@@ -416,6 +430,14 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         
         return [scaled_k1, scaled_k2], [scaled_invk1, scaled_invk2]    
         
+    def indices_to_disparity(self, indices):
+        """Convert cost volume indices to 1/depth for visualisation"""
+
+        batch, height, width = indices.shape
+        depth = self.depth_bins[indices.reshape(-1).cpu()]
+        disp = 1 / depth.reshape((batch, height, width))
+        return disp
+    
     def compute_confidence_mask(self, cost_volume, num_bins_threshold=None):
         """ Returns a 'confidence' mask based on how many times a depth bin was observed"""
 
@@ -423,19 +445,22 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
             num_bins_threshold = self.num_depth_bins
         confidence_mask = ((cost_volume > 0).sum(1) == num_bins_threshold).float()
 
-        return confidence_mask    
-    
-    def forward(self, inputs_dic, K = 1, mode=None):
+        return confidence_mask   
+
+    def forward(self, inputs_dic, K, mode, md_encoder):
         '''
         img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
         img_frames[1] : previous t-1 image 
         '''
         
-        img_frames = inputs_dic['color']
+        if mode == 0:   # mode=TRAIN
+            img_frames = inputs_dic['color']
+        elif mode == 1: # mode=EVAL
+            img_frames = inputs_dic['color']
+   
         img_intMs = inputs_dic['intM']
         img_extMs = inputs_dic['extM']
         
-        # breakpoint()
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []
         poses = []
@@ -554,11 +579,19 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
         rel_pose = self.compute_rel_pose(img_extMs)     # [R|t]2->1 : 즉 cam1 space 가 기준이 됨.
         scaled_k, scaled_invk = self.compute_scaled_intMs(img_intMs)     # list of intrinsic matrix of [curr_frame(k1), prev_frame(k2)] and [curr_frame_invk1, prev_crame_invk2] 
         
+        scaled_k[0] = inputs_dic['K'][0]
+        scaled_invk[0] = inputs_dic['inv_K'][0]
         
+        # breakpoint()
+        # output, lowest_cost, costvol = md_encoder(img_frames[0], img_frames[1].unsqueeze(dim=1), 
+                                                #   rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0],
+                                                #   0.1, 6.0)
         
-        
-        breakpoint()
-        
+        self.warp_depths = self.warp_depths.to(self.device)
+        for i in range(len(img_extMs)):
+            img_extMs[i] = img_extMs[i].to(self.device)
+            img_intMs[i] = img_intMs[i].to(self.device)
+    
         with torch.no_grad():
             # manydepth - warp features to find cost volume
             cost_volume1, missing_mask1 = self.match_features(reshaped_2d_glob1_layer1, reshaped_2d_glob2_layer1.unsqueeze(dim=1), rel_pose.unsqueeze(dim=1), scaled_k[0], scaled_invk[0])    
@@ -571,11 +604,56 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
             confidence_mask3 = self.compute_confidence_mask(cost_volume3.detach() * (1 - missing_mask3.detach()))  
             confidence_mask4 = self.compute_confidence_mask(cost_volume4.detach() * (1 - missing_mask4.detach()))  
         
+        # breakpoint()
+        # for visualisation - ignore 0s in cost volume for minimum
+        viz_cost_vol1 = cost_volume1.clone().detach()
+        viz_cost_vol2 = cost_volume2.clone().detach()
+        viz_cost_vol3 = cost_volume3.clone().detach()
+        viz_cost_vol4 = cost_volume4.clone().detach()
+        
+        viz_cost_vol1[viz_cost_vol1 == 0] = 100
+        viz_cost_vol2[viz_cost_vol2 == 0] = 100
+        viz_cost_vol3[viz_cost_vol3 == 0] = 100
+        viz_cost_vol4[viz_cost_vol4 == 0] = 100
+        
+        mins1, argmin1 = torch.min(viz_cost_vol1, 1)
+        mins2, argmin2 = torch.min(viz_cost_vol2, 1)
+        mins3, argmin3 = torch.min(viz_cost_vol3, 1)
+        mins4, argmin4 = torch.min(viz_cost_vol4, 1)
+        
+        lowest_cost1 = self.indices_to_disparity(argmin1)
+        lowest_cost2 = self.indices_to_disparity(argmin2)
+        lowest_cost3 = self.indices_to_disparity(argmin3)
+        lowest_cost4 = self.indices_to_disparity(argmin4)
+        
+        lowest_cost1 = F.interpolate(lowest_cost1.unsqueeze(dim=1), size=(48,160), mode='bilinear')
+        lowest_cost2 = F.interpolate(lowest_cost2.unsqueeze(dim=1), size=(48,160), mode='bilinear')
+        lowest_cost3 = F.interpolate(lowest_cost3.unsqueeze(dim=1), size=(48,160), mode='bilinear')
+        lowest_cost4 = F.interpolate(lowest_cost4.unsqueeze(dim=1), size=(48,160), mode='bilinear')
+        
+        save_image(img_frames[0], 'img_curr.jpg')
+        save_image(img_frames[1], 'img_prev.jpg')
+        
+        save_image(lowest_cost1, 'vis_cost1.jpg')
+        save_image(lowest_cost2, 'vis_cost2.jpg')
+        save_image(lowest_cost3, 'vis_cost3.jpg')
+        save_image(lowest_cost4, 'vis_cost4.jpg')
+        
+        save_image(lowest_cost1, 'vis_cost1_n.jpg', normalize=True)
+        save_image(lowest_cost2, 'vis_cost2_n.jpg', normalize=True)
+        save_image(lowest_cost3, 'vis_cost3_n.jpg', normalize=True)
+        save_image(lowest_cost4, 'vis_cost4_n.jpg', normalize=True)
+        
+        lc = torch.cat([lowest_cost4, lowest_cost3, lowest_cost2, lowest_cost1], dim=2)
+        save_image(lc, 'vis_all_cost.jpg')
+        save_image(lc, 'vis_all_cost_n.jpg', normalize=True)
+        
+        # breakpoint()
         cost_volume1 *= confidence_mask1.unsqueeze(1)   # (b,96,12,40)
         cost_volume2 *= confidence_mask2.unsqueeze(1)
         cost_volume3 *= confidence_mask3.unsqueeze(1)
         cost_volume4 *= confidence_mask4.unsqueeze(1)
-        
+
         cost_volume1 = cost_volume1.flatten(2).permute(0,2,1)   # (b,480,96)
         cost_volume2 = cost_volume2.flatten(2).permute(0,2,1)
         cost_volume3 = cost_volume3.flatten(2).permute(0,2,1)

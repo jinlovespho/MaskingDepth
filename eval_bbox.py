@@ -20,6 +20,9 @@ import cv2
 
 from vit_rollout import rollout
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
+
+from noise import image_corruption
 
 TRAIN = 0
 EVAL  = 1
@@ -69,17 +72,21 @@ def show_mask_on_image(img, mask):
     cam = cam / np.max(cam)
     return np.uint8(255 * cam)
 
-def pho_visualize_cross_attn_map(ca_module_num, iter_num, curr_frame, prev_frame, ca_maps, discard_ratio, vis_idx):
+def pho_visualize_cross_attn_map(ca_module_num, iter_num, curr_frame, prev_frame, ca_maps, discard_ratio, vis_idx, save_folder_name):
 
-    curr_frame_n = curr_frame[0,...].detach().cpu().permute(1,2,0).numpy() *255    # (192,640,3) 
-    prev_frame_n = prev_frame[0,...].detach().cpu().permute(1,2,0).numpy() *255     # (192,640,3)
+    curr_frame_n = curr_frame[0,...].permute(1,2,0).detach().cpu().numpy() *255    # (192,640,3) [0 255] 
+    prev_frame_n = prev_frame[0,...].permute(1,2,0).detach().cpu().numpy() *255     # (192,640,3) [0 255]
+    
+    curr_frame_n = curr_frame_n.astype(np.uint8)
+    prev_frame_n = prev_frame_n.astype(np.uint8)    
         
     curr_frame_n = curr_frame_n[:,:,[2,1,0]]
     prev_frame_n = prev_frame_n[:,:,[2,1,0]]
     
-    # ca_map = rollout(ca_maps, discard_ratio=discard_ratio, head_fusion='mean')    # (n,n) = (480,480)
-    ca_map = torch.cat(ca_maps,dim=1)
-    ca_map = ca_map.mean(dim=(0,1))
+    # breakpoint()
+    ca_map = rollout(ca_maps, discard_ratio=discard_ratio, head_fusion='mean')    # (n,n) = (480,480)
+    # ca_map = torch.cat(ca_maps, dim=1)    
+    # ca_map = ca_map.mean(dim=(0,1))   # (480,480)
 
     # token to visualize ca_map
     to_vis_tkn = ca_map[vis_idx,:]  # (480)
@@ -100,9 +107,14 @@ def pho_visualize_cross_attn_map(ca_module_num, iter_num, curr_frame, prev_frame
     # show query_point on curr_frame
     query_result = show_mask_on_image(curr_frame_n, query_numpy) # (192,640,3)
 
-    if iter_num == 0 and ca_module_num ==1:
-        cv2.imwrite(f'./vis_ca_map/try4_conv/vis_idx{vis_idx}_ca_map_curr.jpg', query_result)
-    cv2.imwrite(f'./vis_ca_map/try4_conv/vis_idx{vis_idx}_mod{ca_module_num}_ca_map_prev.jpg', result )
+    # make dir for ca_maps
+    save_path_ca_map=f'../vis_bbox/{save_folder_name}/ca_maps'
+    if not os.path.exists(save_path_ca_map):
+        os.makedirs(save_path_ca_map)
+
+    if iter_num == 0 and ca_module_num == 1:
+        cv2.imwrite(f'{save_path_ca_map}/vis_idx{vis_idx}_ca_map_curr.jpg', query_result)
+    cv2.imwrite(f'{save_path_ca_map}/vis_idx{vis_idx}_module{ca_module_num}_ca_map_prev.jpg', result )
 
 # Define a function to draw bounding boxes on an image
 def draw_boxes(image_tensor, boxes, color=(0, 255, 0), thickness=1):
@@ -143,6 +155,7 @@ def draw_boxes(image_tensor, boxes, color=(0, 255, 0), thickness=1):
     # breakpoint()
     
     return images,masks    
+
 
 
 if __name__ == "__main__":
@@ -199,6 +212,89 @@ if __name__ == "__main__":
         step = 0    
         #validation
         with torch.no_grad():
+            
+            MIN_DEPTH = 1e-3
+            MAX_DEPTH = 80
+
+            frames_to_load = [0]
+            for idx in range(-1, -1 - 1, -1):
+                if idx not in frames_to_load:
+                    frames_to_load.append(idx)
+
+            if True:
+                from networks.manydepth.resnet_encoder import ResnetEncoderMatching
+                
+                load_weights_folder = '/home/kwangrok/Downloads/VS_CODE/my_github/monodepth/anhg/MaskingDepth/pretrained_weights/KITTI_MR'
+                encoder_path = os.path.join(load_weights_folder, "encoder.pth")
+                decoder_path = os.path.join(load_weights_folder, "depth.pth")
+                encoder_class = ResnetEncoderMatching
+
+                encoder_dict = torch.load(encoder_path)
+                
+                try:
+                    HEIGHT, WIDTH = encoder_dict['height'], encoder_dict['width']
+                except KeyError:
+                    print('No "height" or "width" keys found in the encoder state_dict, resorting to '
+                        'using command line values!')
+                    HEIGHT, WIDTH = 192, 640
+
+                # encoder config 느낌 
+                encoder_opts = dict(num_layers=18,
+                                    pretrained=False,
+                                    input_width=encoder_dict['width'],
+                                    input_height=encoder_dict['height'],
+                                    adaptive_bins=True,
+                                    min_depth_bin=0.1, max_depth_bin=20.0,
+                                    depth_binning='linear',
+                                    num_depth_bins=96)
+                pose_enc_dict = torch.load(os.path.join(load_weights_folder, "pose_encoder.pth"))
+                pose_dec_dict = torch.load(os.path.join(load_weights_folder, "pose.pth"))
+
+                # 여기가 manydepth fig2. 의 하나의 poseCNN 이다.
+                from networks.manydepth import resnet_encoder, pose_decoder
+                pose_enc = resnet_encoder.ResnetEncoder(18, False, num_input_images=2)
+                pose_dec = pose_decoder.PoseDecoder(pose_enc.num_ch_enc, num_input_features=1, num_frames_to_predict_for=2)
+
+                enc_weights=pose_enc.load_state_dict(pose_enc_dict, strict=True)
+                dec_weights=pose_dec.load_state_dict(pose_dec_dict, strict=True)
+                print(enc_weights)
+                print(dec_weights)
+
+                min_depth_bin = encoder_dict.get('min_depth_bin')
+                max_depth_bin = encoder_dict.get('max_depth_bin')
+
+                pose_enc.eval()
+                pose_dec.eval()
+
+                if torch.cuda.is_available():
+                    pose_enc.cuda()
+                    pose_dec.cuda()
+                    
+                from networks.manydepth.depth_decoder import DepthDecoder
+                encoder = encoder_class(**encoder_opts) # ResnetEncoderMatching 이라는 class 
+                depth_decoder = DepthDecoder(encoder.num_ch_enc)
+
+                model_dict = encoder.state_dict()
+                enc_load_result = encoder.load_state_dict({k: v for k, v in encoder_dict.items() if k in model_dict})
+                dec_load_result = depth_decoder.load_state_dict(torch.load(decoder_path))
+
+                print(enc_load_result)
+                print(dec_load_result)
+
+                encoder.eval()
+                depth_decoder.eval()
+
+                if torch.cuda.is_available():
+                    encoder.cuda()
+                    depth_decoder.cuda()
+
+                pred_disps = []
+
+                print("-> Computing predictions with size {}x{}".format(HEIGHT, WIDTH))
+            
+            # breakpoint()
+              
+            # MY
             utils.model_mode(model,EVAL)
               
             # LOAD MODEL and VISUALIZE ATTENTION MAPS
@@ -217,31 +313,96 @@ if __name__ == "__main__":
             
             bbox_eval_error=[]
             
+            vis_attn_map = True
+            if vis_attn_map:
+                
+                ca1_names=[]
+                ca1_modules=[]
+                ca1_maps=[]
+                for name, module in model['depth'].module.named_modules():
+                    if 'cross_attn_module1' in name and 'c_attn_drop' in name:
+                        ca1_names.append(name)
+                        ca1_modules.append(module)
+                        module.register_forward_hook(lambda m,i,o: ca1_maps.append(o.detach().cpu()) )
+            
+
+            breakpoint()
             # validation loop
             for i, inputs in enumerate(tqdm(val_loader)):
                 
-                # breakpoint()
-                  
                 total_loss = 0
                 losses = {}
                 
                 # multiframe validation
                 if train_cfg.data.dataset=='kitti_depth_multiframe':
+                    # breakpoint()
+                    add_noise = train_cfg.add_noise
+                    if add_noise:
+                        img0 = inputs[0]['color']
+                        img0_n = img0.squeeze().permute(1,2,0).detach().cpu().numpy() * 255
+                        img0_n = img0_n.astype(np.uint8)
+                        
+                        noise_type = 'motion_blur'
+                        noise_degree = 5
+                        img0_corrupt = image_corruption(img0_n, noise_type, noise_degree) 
+                        
+                        img0_t = torch.tensor(img0_corrupt)
+                        img0_t = img0_t.permute(2,0,1) / 255
+                        inputs[0]['color'] = img0_t.unsqueeze(dim=0)
+                        
+                        save_image(img0, '../vis_corrupt_img/img0.jpg')
+                        save_image(img0_t, '../vis_corrupt_img/img0_corrupt.jpg')
+                        
                     for input in inputs:
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda
-
                     total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
-                                                           
+                    # total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_debugmanydepth(inputs, model, train_cfg, EVAL, encoder)   
+                                              
                     gt_depth = inputs[0]['depth_gt']
                     inputs_color = inputs[0]['color']
                     inputs_box = inputs[0]['box']
                     inputs_curr_folder = inputs[0]['curr_folder']
                     inputs_curr_frame = inputs[0]['curr_frame']
                     
+                    
+                    # ca_maps for cross_attn_modules
+                    maps1 = ca1_maps[-4:]
+                    
+                    # rnd_gen = torch.rand(480).argsort()
+                    # to_vis_idx = rnd_gen[:30]
+                    to_vis_idx = [92,210,222,251,419]
+                    discard_ratio = 0.8
+                    
+                    breakpoint()
+                    for vis_idx in to_vis_idx:
+                        pho_visualize_cross_attn_map( ca_module_num=1, iter_num=i, 
+                                                      curr_frame=inputs[0]['color'], prev_frame=inputs[1]['color'], 
+                                                      ca_maps=maps1, discard_ratio=discard_ratio, vis_idx=vis_idx, 
+                                                      save_folder_name=train_cfg.model.save_folder_name)
+                            
+                    
+                    
                 # singleframe validation
                 else:
+                    add_noise = train_cfg.add_noise
+                    if add_noise:
+                        img0 = inputs['color']
+                        img0_n = img0.squeeze().permute(1,2,0).detach().cpu().numpy() * 255
+                        img0_n = img0_n.astype(np.uint8)
+                        
+                        noise_type = 'motion_blur'
+                        noise_degree = 5
+                        img0_corrupt = image_corruption(img0_n, noise_type, noise_degree) 
+                        
+                        img0_t = torch.tensor(img0_corrupt)
+                        img0_t = img0_t.permute(2,0,1) / 255
+                        inputs['color'] = img0_t.unsqueeze(dim=0)
+                        
+                        save_image(img0, '../vis_corrupt_img/sf_img0.jpg')
+                        save_image(img0_t, '../vis_corrupt_img/sf_img0_corrupt.jpg')
+                       
                     for key, ipt in inputs.items():
                         if type(ipt) == torch.Tensor:
                             inputs[key] = ipt.to(device)
@@ -283,7 +444,7 @@ if __name__ == "__main__":
                     os.makedirs(save_img_path)
                              
                 # save bbox and gtdepth images every 50 iteration
-                if i%50 == 0:
+                if i%25 == 0:
                     for j in range( b ):    # batch_size 만큼 loop
                         save_img_name = f'{inputs_curr_folder[j].split("/")[-1]}_{inputs_curr_frame[j]}'
                         save_image(bbox_drawn_imgs_t[j], f'{save_img_path}/{i}_{save_img_name}_bbox_drawn_img.png', normalize=True)

@@ -224,11 +224,20 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         self.cmap3_linear = nn.Linear(26112, vit_features)  
         self.cmap4_linear = nn.Linear(26112, vit_features)  
         
-    def forward(self, img_frames, K = 1, mode=None):
+    def forward(self, inputs_dic, K = 1, mode=None):
         '''
         img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
         img_frames[1] : previous t-1 image 
         '''
+        
+        if mode == 0:   # mode=TRAIN
+            img_frames = inputs_dic['color']
+        elif mode == 1: # mode=EVAL
+            img_frames = inputs_dic['color_aug']
+   
+        img_intMs = inputs_dic['intM']
+        img_extMs = inputs_dic['extM']
+        
         # breakpoint()
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []

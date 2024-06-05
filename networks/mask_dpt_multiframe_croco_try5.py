@@ -183,7 +183,7 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         # self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)             # only linear cAttnOut
         
         # conv4d 
-        conv4d_out = 256
+        conv4d_out = 64
         self.conv4d_module1 = nn.Sequential( Conv4d_Module(in_c=self.encoder.heads, out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
                                              Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
                                              Conv4d_Module(in_c=conv4d_out,         out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
@@ -208,11 +208,17 @@ class Masked_DPT_Multiframe_Croco_Try5(nn.Module):
         self.cmap3_linear = nn.Linear(conv4d_out, vit_features)  
         self.cmap4_linear = nn.Linear(conv4d_out, vit_features)  
         
-    def forward(self, img_frames, K = 1, mode=None):
+    def forward(self, inputs_dic, K = 1, mode=None):
         '''
         img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
         img_frames[1] : previous t-1 image 
         '''
+        
+        if mode == 0:   # mode=TRAIN
+            img_frames = inputs_dic['color']
+        elif mode == 1: # mode=EVAL
+            img_frames = inputs_dic['color_aug']
+        
         # breakpoint()
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []

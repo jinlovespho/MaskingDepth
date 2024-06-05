@@ -1,17 +1,17 @@
 ------------------full eval metric------------------
-de/abs_rel: 0.07149 
-de/sq_rel: 0.3338 
-de/rms: 3.20197 
-de/log_rms: 0.11191 
-da/a1: 0.93947 
-da/a2: 0.98898 
-da/a3: 0.9974 
+de/abs_rel: 0.08133 
+de/sq_rel: 0.44773 
+de/rms: 3.72948 
+de/log_rms: 0.13006 
+da/a1: 0.91446 
+da/a2: 0.97956 
+da/a3: 0.99438 
 
 ------------------bbox eval metric------------------
-de/abs_rel: 0.09583 
-de/sq_rel: 0.67945 
-de/rms: 4.20075 
-de/log_rms: 0.1406 
-da/a1: 0.90722 
-da/a2: 0.97846 
-da/a3: 0.99323 
+de/abs_rel: 0.11333 
+de/sq_rel: 0.84503 
+de/rms: 4.65309 
+de/log_rms: 0.15944 
+da/a1: 0.86916 
+da/a2: 0.96533 
+da/a3: 0.99067 

@@ -20,7 +20,7 @@ Train:
     vit_type: 'vit_base'               # ['vit_base', 'vit_large']
     my_load_path: "../pretrained_weights/croco_multiframe_bs4_mask06_baseline_epoch20.pth"
     save_folder_name: 'multiframe_mask06_baseline'
-    masking_ratio: 0.0                 # set masking ratio !
+    masking_ratio: 0.6                 # set masking ratio !
     num_frame_to_mask: 1                 # set num_frame_to_mask=2 to mask (t, t-1)frame 
     cross_attn_depth: 4
     enable_color_loss: False       # True for COLOR LOSS 

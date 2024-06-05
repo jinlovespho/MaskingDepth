@@ -31,5 +31,5 @@ def rollout(attentions, discard_ratio, head_fusion):
             a = a / a.sum(dim=-1)
 
             result = torch.matmul(a, result)
-        
+
         return result[0,...]    # (480,480)

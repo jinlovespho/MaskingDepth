@@ -103,9 +103,8 @@ def compute_loss_multiframe_colorLoss(inputs, model, train_cfg, mode = TRAIN):
     else:
         return total_loss, losses, pred_depth, pred_color, pred_uncert, pred_depth_mask
 
-
 # JINLOVESPHO
-def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
+def compute_loss_multiframe(inputs, model, train_cfg, mode):
     losses = {}
     total_loss = 0
     
@@ -126,12 +125,10 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
         
     pred_uncert = None 
 
-    if mode == EVAL:
-        pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic['color_aug'], model, K = train_cfg.K)
-    else:
-        pred_depth_mask = None
-
-
+    # if mode == EVAL:
+    #     pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic, model, train_cfg.K, mode, md_encoder)
+    # else:
+    #     pred_depth_mask = None
 
     #total_loss
     for loss in losses.values():
@@ -140,7 +137,44 @@ def compute_loss_multiframe(inputs, model, train_cfg, mode = TRAIN):
     if mode == TRAIN:
         return total_loss, losses
     else:
-        return total_loss, losses, pred_depth, pred_uncert, pred_depth_mask
+        return total_loss, losses, pred_depth, pred_uncert, pred_depth
+
+
+# manydepthdebug
+def compute_loss_multiframe_debugmanydepth(inputs, model, train_cfg, mode, md_encoder):
+    losses = {}
+    total_loss = 0
+    
+    # list 형태로 정리된 time frame들을 dic 형태로 다시 구성
+    inputs_dic={}
+    key_lst = [ key for key in inputs[0].keys() ]
+    for key in key_lst:
+        inputs_dic[key]=[]
+    for input in inputs:
+        for key, val in input.items():
+           inputs_dic[key].append(val)
+           
+    pred_depth, full_features, fusion_features = model_forward_multiframe_debugmanydepth(inputs_dic, model, train_cfg.K,  mode, md_encoder)
+
+    # breakpoint()
+    pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
+    losses['sup_loss'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
+        
+    pred_uncert = None 
+
+    # if mode == EVAL:
+    #     pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic, model, train_cfg.K, mode, md_encoder)
+    # else:
+    #     pred_depth_mask = None
+
+    #total_loss
+    for loss in losses.values():
+        total_loss += loss
+    
+    if mode == TRAIN:
+        return total_loss, losses
+    else:
+        return total_loss, losses, pred_depth, pred_uncert, pred_depth
 
 
 
@@ -155,9 +189,16 @@ def model_forward_multiframe_colorLoss(inputs, model, K=1, mode=None):
     return pred_depth, pred_color, features, fusion_features
 
 # JINLOVESPHO
-def model_forward_multiframe(inputs_dic, model, K=1, mode=None):  
+def model_forward_multiframe(inputs_dic, model, K, mode):  
     pred_depth, features, fusion_features = model['depth'](inputs_dic, K, mode)
     return pred_depth, features, fusion_features
+
+# debug manydepth
+def model_forward_multiframe_debugmanydepth(inputs_dic, model, K, mode, md_encoder):  
+    pred_depth, features, fusion_features = model['depth'](inputs_dic, K, mode, md_encoder)
+    return pred_depth, features, fusion_features
+
+        
 
 
 ############################################################################## 

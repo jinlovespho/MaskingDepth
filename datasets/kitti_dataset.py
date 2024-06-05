@@ -274,8 +274,8 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
 
         else:         
             line = self.filenames[index].split()
-            folder = line[0]
-            frame_index = int(line[1])
+            folder = line[0]    # date
+            frame_index = int(line[1])  # img_idx
             side = line[2]          
             
             start_idx = frame_index 
@@ -298,8 +298,7 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                 date = line[0].split('/')[0]
                 drive = line[0].split('/')[1].split('_')[-2] 
                 p_data = pykitti.raw(dataset_path, date, drive, frames=[start_idx], imtype='jpg')
-        
-                # ForkedPdb().set_trace()
+               
                 # cam intrinsics
                 cam_intrins = self.get_cam_intrinsics(p_data)
                 inputs['ray'] = cam_intrins['unit_ray_array_2D']
@@ -308,17 +307,29 @@ class KITTIDepthMultiFrameDataset(KITTIDataset):
                 tmp_intM[-1,-1] = 1.0
                 inputs['intM'] = tmp_intM
             
-                # cam extrinsic (pose)
-                pose = p_data.oxts[0].T_w_imu       # imu -> w
-                M_imu2cam = p_data.calib.T_cam2_imu # imu -> cam2
-                extM = np.matmul(M_imu2cam, np.linalg.inv(pose))    # w->cam2: imu->cam2, w->imu
-                inputs['extM'] = extM.astype(np.float32)
+                # cam extrinsic (pose)                
+                imu_to_world = p_data.oxts[0].T_w_imu
+                world_to_imu = np.linalg.inv(imu_to_world)
+                imu_to_cam2 = p_data.calib.T_cam2_imu
+                world_to_cam2 = np.matmul(imu_to_cam2, world_to_imu)
+                inputs['extM'] = world_to_cam2.astype(np.float32)
+                
+                tmp_K = torch.zeros(4,4)
+                tmp_K[:3,:3] = torch.tensor(p_data.calib.K_cam2)
+                tmp_K[-1,-1] = 1.0
+                inputs['tmp_K'] = tmp_K
+                
+                
+                # pose = p_data.oxts[0].T_w_imu       # imu -> w
+                # M_imu2cam = p_data.calib.T_cam2_imu # imu -> cam2
+                # extM = np.matmul(M_imu2cam, np.linalg.inv(pose))    # w->cam2: imu->cam2, w->imu
+                # inputs['extM'] = extM.astype(np.float32)
                 
                 # ForkedPdb().set_trace()  
                 
                 K = self.K.copy()
-                K[0, :] *= self.width 
-                K[1, :] *= self.height
+                K[0, :] *= self.width  // 4 
+                K[1, :] *= self.height // 4 
 
                 inv_K = np.linalg.pinv(K)
 

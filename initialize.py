@@ -802,7 +802,7 @@ def data_loader(data_cfg, batch_size, num_workers):
     val_filenames   = utils.readlines(fpath.format("val"))
     
     print('DATASET: ', dataset)
-    breakpoint()
+    # breakpoint()
     if data_cfg.dataset == 'kitti_depth_multiframe':
         train_dataset = dataset(data_cfg.data_path, train_filenames, data_cfg.height, data_cfg.width, use_box = data_cfg.use_box, 
                                  gt_num = -1, is_train=True, img_ext=data_cfg.img_ext, num_prev_frame=data_cfg.num_prev_frame)

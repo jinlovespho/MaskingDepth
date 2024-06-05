@@ -276,7 +276,7 @@ class MonoDataset(data.Dataset):
             
             K = self.K.copy()
             K[0, :] *= self.width 
-            K[1, :] *= self.height
+            K[1, :] *= self.height 
 
             inv_K = np.linalg.pinv(K)
 

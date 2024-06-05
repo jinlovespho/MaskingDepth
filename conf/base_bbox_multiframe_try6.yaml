@@ -9,11 +9,14 @@ Train:
   seed: 41
   start_epoch: 0
   end_epoch: 50
-  batch_size: 4
+  batch_size: 1
   num_workers: 1
   lr: 1e-4
   K: 1                 # set number of K for K-way masking, 64 is the default
   load_optim : False
+
+  add_noise: False
+  vis_attn_map: True
   
   model: 
     baseline: "try6"    # ["DPT", "monodepth2", "DPT_Multiframe", "DPT_Multiframe_mask_t", "DPT_Multiframe_CrossAttn_mask_t", "DPT_Multiframe_MultiCrossAttn_mask_t", "DPT_Multiframe_MultiCrossAttn_ColorLoss_mask_t"]

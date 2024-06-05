@@ -120,11 +120,15 @@ class Masked_DPT_Multiframe_Croco_Baseline(nn.Module):
         
         self.position_getter = PositionGetter()
                 
-    def forward(self, img_frames, K = 1, mode=None):
+    def forward(self, inputs_dic, K = 1, mode=None):
         '''
         img_frames[0] : current t frame (b,3,h,w)=(b,3,192,640)
         img_frames[1] : previous t-1 frame
         '''
+        if mode == 0:   # mode=TRAIN
+            img_frames = inputs_dic['color']
+        elif mode == 1: # mode=EVAL
+            img_frames = inputs_dic['color_aug']
 
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         # tokenized_frames[0] : current t frame (b,480,768)
