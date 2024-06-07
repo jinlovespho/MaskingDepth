@@ -447,7 +447,7 @@ class Masked_DPT_Multiframe_Croco_Costvolume_Try1(nn.Module):
 
         return confidence_mask   
 
-    def forward(self, inputs_dic, K, mode, md_encoder):
+    def forward(self, inputs_dic, K, mode, md_encoder=None):
         '''
         img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
         img_frames[1] : previous t-1 image 
