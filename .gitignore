@@ -1,9 +1,10 @@
 __pycache__/
 **/__pycache__/
 log/
-*.png
 wandb/
+
 *.pth
+*.png
 
 
 
