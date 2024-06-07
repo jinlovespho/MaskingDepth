@@ -1,6 +1,6 @@
 ##### Supervised Training ######
 Train:
-  wandb : True  # log with wandb
+  wandb : False  # log with wandb
   wandb_proj_name: '20240215_MaskingDepth_multiframe'
   model_name: 'pho_server5_gpu0123_kitti_bs8_mask00_enc(croco_vit_base)_try5(conv4d64)(my_reshape)'  # model names to save log file or wandb.
   wandb_log_path: '/media/data1/jinlovespho/log/mfdepth'

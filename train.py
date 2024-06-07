@@ -81,24 +81,20 @@ if __name__ == "__main__":
                 
         
         step = 0
-        print('Start Training')
         for epoch in range(train_cfg.start_epoch, train_cfg.end_epoch):
             utils.model_mode(model,TRAIN)  
             
             # train
-            print(f'Training progress(ep:{epoch+1})')
-            for i, inputs in enumerate(tqdm(train_loader)): 
+            tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_cfg.end_epoch}')
+            for i, inputs in enumerate(tqdm_train): 
+                
                 if train_cfg.data.dataset=='kitti_depth_multiframe':
                     for input in inputs:
                         for key, ipt in input.items():
                             if type(ipt) == torch.Tensor:
                                 input[key] = ipt.to(device)     # Place current and previous frames on cuda  
-                        
-                    # breakpoint()
-                    if train_cfg.model.enable_color_loss:
-                        total_loss, losses = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, TRAIN)   
-                    else:
-                        total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
+                    
+                    total_loss, losses = loss.compute_loss_multiframe(inputs, model, train_cfg, TRAIN)     
                                 
                 else:
                     for key, ipt in inputs.items():
@@ -107,6 +103,7 @@ if __name__ == "__main__":
                     # with torch.cuda.amp.autocast(enabled=True):
                     total_loss, losses = loss.compute_loss(inputs, model, train_cfg, TRAIN)
                 
+                tqdm_train.set_postfix({'train_loss':f'{total_loss:.4f}'})
                 # backward & optimizer
                 optimizer.zero_grad()
                 # scaler.scale(total_loss).backward()
@@ -126,25 +123,8 @@ if __name__ == "__main__":
             
             # save model & optimzier (.pth)
             save_epoch_freq = int(train_cfg.save_epoch_freq)
-            if epoch % save_epoch_freq == save_epoch_freq-1:
+            if epoch+1 % save_epoch_freq == save_epoch_freq:
                 utils.save_component(train_cfg.log_path, train_cfg.model_name, epoch, model, optimizer)
-
-            # breakpoint()
-            # LOAD MODEL and VISUALIZE ATTENTION MAPS
-            # load_path = '/media/dataset1/jinlovespho/log/multiframe/pho_gpu1_kitti_croco_rope_mask06_fuse(only_map)/weights_50/depth.pth'
-            # loaded_weight = torch.load(load_path)
-            
-            # load_result = model['depth'].module.load_state_dict(loaded_weight)
-
-            # visualize 4 cross attention maps 
-            # ca1_name=[]
-            # ca1_mod=[]
-            # for name, module in model['depth'].module.named_modules():
-            #     if 'cross_attn_module1' in name and 'cross_attn.attn_drop' in name:
-            #         ca1_name.append(name)
-            #         module.register_forward_hook(lambda m,i,o: ca1_mod.append( o.detach().cpu() ) )
-                    
-            # breakpoint()
 
             #validation
             with torch.no_grad():
@@ -153,12 +133,9 @@ if __name__ == "__main__":
                 eval_error = []
                 pred_depths = []
                 gt_depths = []
-                # JINLOVESPHO
-                pred_colors = []
-                gt_colors= []
 
-                print(f'Validation progress(ep:{epoch+1})')
-                for i, inputs in enumerate(tqdm(val_loader)):
+                tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_cfg.end_epoch}')
+                for i, inputs in enumerate(tqdm_val):
                     
                     total_loss = 0
                     losses = {}
@@ -170,12 +147,8 @@ if __name__ == "__main__":
                                 if type(ipt) == torch.Tensor:
                                     input[key] = ipt.to(device)     # Place current and previous frames on cuda
 
-                        if train_cfg.model.enable_color_loss:
-                            total_loss, _, pred_depth, pred_color, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe_colorLoss(inputs, model, train_cfg, EVAL)    
-                        else:
-                            total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
+                        total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss_multiframe(inputs, model, train_cfg, EVAL)   
                             
-                        # breakpoint()
                         gt_depth = inputs[0]['depth_gt']
                         gt_color = inputs[0]['color']
                         
@@ -188,23 +161,15 @@ if __name__ == "__main__":
                         total_loss, _, pred_depth, pred_uncert, pred_depth_mask = loss.compute_loss(inputs, model, train_cfg, EVAL)
                         gt_depth = inputs['depth_gt']
                 
-                    # breakpoint()
                     eval_loss += total_loss
-                    # pred_depth.squeeze(dim=1)은 tensor 로 (8,H,W) 이고. pred_depths 는 [] 리스트이다.
-                    # pred_depths.extend( pred_depth )를 해주면 pred_depth 의 8개의 이미지들이 차례로 리스트로 들어가서 리스트 len은 개가 돼
-                    # 즉 list = [ pred_img1(H,W), pred_img2(H,W), . . . ] 
+
                     pred_depths.extend(pred_depth.squeeze(1).cpu().numpy())
                     gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
-                    # JINLOVESPHO
-                    # pred_colors.extend(pred_color.cpu().numpy())    # 굳이 color에 대해서는 eval metric 돌릴필요 없는듯.
-                    # gt_colors.extend(gt_color.cpu().numpy()) 
 
-                # breakpoint()
                 eval_error = eval_metric(pred_depths, gt_depths, train_cfg)  
                 error_dict = get_eval_dict(eval_error)
                 error_dict["val_loss"] = eval_loss / len(val_loader)                
 
-                # breakpoint()
                 if train_cfg.wandb:
                     error_dict["epoch"] = (epoch+1)
                     wandb.log(error_dict)
