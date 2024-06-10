@@ -2,224 +2,123 @@ import torch
 import torch.nn.functional as F
 import torchvision 
 import utils
+from utils import * 
 
 TRAIN   = 0
 EVAL    = 1
 
-# total loss(sup)
-def compute_loss(inputs, model, train_cfg, mode = TRAIN):
+# total loss
+def compute_loss(inputs, model, train_args, mode = TRAIN):
     losses = {}
     total_loss = 0
     
-    pred_depth, full_features, fusion_features = model_forward(inputs['color'], model)
+    orig_h, orig_w = inputs['depth_gt'].shape[-2:]
+    gt_depth = inputs['depth_gt']
+    
+    # forward pass 
+    model_outs = model_forward(inputs, model, train_args, mode)  # (b,1,192,640)
+    
+    # loss calculation
+    if train_args.training_loss == 'supervised_depth':
+        pred_depth_orig = F.interpolate(model_outs['pred_depth'], (orig_h, orig_w), mode="bilinear", align_corners = False)   # (b,1,375,1242)
+        non_zero_mask = (inputs['depth_gt'] > 0).detach() 
+        losses['sup_loss'] = compute_sup_loss(pred_depth_orig, gt_depth, non_zero_mask)
 
-    ### compute supervised loss 
-    if train_cfg.data.dataset in ['nyu'] or train_cfg.unlabeled_data.dataset in ['nyu']:
-        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'])
-    # 여기 실행 for KITTI 
-    else:
-        pred_depth = F.interpolate(pred_depth, inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
-        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'], (inputs['depth_gt'] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
-    
-    pred_uncert=None
-    pred_depth_mask = None
-    
-    #total_loss
-    for loss in losses.values():
-        total_loss += loss
-    
-    if mode == TRAIN:
-        return total_loss, losses
-    else:
-        return total_loss, losses, pred_depth, pred_uncert, pred_depth_mask
-
-# total loss(sup)
-def compute_loss_bbox(inputs, model, train_cfg, mode = TRAIN, bbox_masks=None):
-    losses = {}
-    total_loss = 0
-    
-    # breakpoint()
-
-    pred_depth, full_features, fusion_features = model_forward(inputs['color'], model)
-
-    ### compute supervised loss 
-    if train_cfg.data.dataset in ['nyu'] or train_cfg.unlabeled_data.dataset in ['nyu']:
-        losses['sup_loss'] = compute_sup_loss(pred_depth, inputs['depth_gt'])
-    # 여기 실행 for KITTI 
-    else:
-        pred_depth = F.interpolate(pred_depth, inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
-        losses['bbox_loss'] = compute_sup_loss_bbox(pred_depth, inputs['depth_gt'], (inputs['depth_gt'] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
-    
-    pred_uncert=None
-    pred_depth_mask = None
-    
-    #total_loss
-    for loss in losses.values():
-        total_loss += loss
-    
-    if mode == TRAIN:
-        return total_loss, losses
-    else:
-        return total_loss, losses, pred_depth, pred_uncert, pred_depth_mask
-
-def compute_loss_multiframe_colorLoss(inputs, model, train_cfg, mode = TRAIN):
-    losses = {}
-    total_loss = 0
-    
-    # list 형태로 정리된 time frame들을 dic 형태로 다시 구성
-    inputs_dic={}
-    key_lst = [ key for key in inputs[0].keys() ]
-    for key in key_lst:
-        inputs_dic[key]=[]
-    for input in inputs:
-        for key, val in input.items():
-           inputs_dic[key].append(val)
-    
-    # breakpoint()
-            
-    pred_depth, pred_color, full_features, fusion_features = model_forward_multiframe_colorLoss(inputs_dic['color'], model, train_cfg.K,  mode)
-    
-    reconstruction_size = inputs_dic['depth_gt'][0].shape[-2:]  # (375,1242)
-    pred_depth = F.interpolate(pred_depth, reconstruction_size, mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
-    losses['sup_loss_depth'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
-    losses['sup_loss_color'] = compute_sup_loss(pred_color, inputs_dic['color'][0], mask=None)
-        
-    ### make uncertainty map
-    pred_uncert = None 
-
-
-    if mode == EVAL:
-        pred_depth_mask, pred_color_mask, _, _ = model_forward_multiframe_colorLoss(inputs_dic['color_aug'], model, K = train_cfg.K)
-    else:
-        pred_depth_mask = None
+    elif train_args.training_loss == 'selfsupervised_img_recon':    
+        pred_depth_orig = F.interpolate(model_outs['~~'], (orig_h, orig_w), mode="bilinear", align_corners = False)   # (b,1,375,1242)
+        recon_losses = []
+        recon_loss, recon_img = compute_selfsup_loss(inputs, model_outs, train_args, mode)
+        recon_losses.append(recon_loss)  
+        losses['selfsup_loss'] = torch.stack(recon_losses).mean()
 
 
     #total_loss
     for loss in losses.values():
         total_loss += loss
     
+    # returns
     if mode == TRAIN:
         return total_loss, losses
     else:
-        return total_loss, losses, pred_depth, pred_color, pred_uncert, pred_depth_mask
-
-# JINLOVESPHO
-def compute_loss_multiframe(inputs, model, train_cfg, mode):
-    losses = {}
-    total_loss = 0
-    
-    # list 형태로 정리된 time frame들을 dic 형태로 다시 구성
-    inputs_dic={}
-    key_lst = [ key for key in inputs[0].keys() ]
-    for key in key_lst:
-        inputs_dic[key]=[]
-    for input in inputs:
-        for key, val in input.items():
-           inputs_dic[key].append(val)
-           
-    pred_depth, full_features, fusion_features = model_forward_multiframe(inputs_dic, model, train_cfg.K,  mode)
-
-    # breakpoint()
-    pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
-    losses['sup_loss'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
-        
-    pred_uncert = None 
-
-    # if mode == EVAL:
-    #     pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic, model, train_cfg.K, mode, md_encoder)
-    # else:
-    #     pred_depth_mask = None
-
-    #total_loss
-    for loss in losses.values():
-        total_loss += loss
-    
-    if mode == TRAIN:
-        return total_loss, losses
-    else:
-        return total_loss, losses, pred_depth, pred_uncert, pred_depth
+        return total_loss, losses, pred_depth_orig, model_outs
 
 
-# manydepthdebug
-def compute_loss_multiframe_debugmanydepth(inputs, model, train_cfg, mode, md_encoder):
-    losses = {}
-    total_loss = 0
-    
-    # list 형태로 정리된 time frame들을 dic 형태로 다시 구성
-    inputs_dic={}
-    key_lst = [ key for key in inputs[0].keys() ]
-    for key in key_lst:
-        inputs_dic[key]=[]
-    for input in inputs:
-        for key, val in input.items():
-           inputs_dic[key].append(val)
-           
-    pred_depth, full_features, fusion_features = model_forward_multiframe_debugmanydepth(inputs_dic, model, train_cfg.K,  mode, md_encoder)
+def model_forward(inputs, model, train_args, mode):
+    outputs = model['depth'](inputs, train_args, mode)
+    return outputs
 
-    # breakpoint()
-    pred_depth = F.interpolate(pred_depth, inputs_dic['depth_gt'][0].shape[-2:], mode="bilinear", align_corners = False)   # model의 output인 pred_depth를 gt_depth_map 크기로 interpolate하여 scale 맞춘것
-    losses['sup_loss'] = compute_sup_loss(pred_depth, inputs_dic['depth_gt'][0], (inputs_dic['depth_gt'][0] > 0).detach())        # scale 맞춘 pred_depth 와 g.t_depth 실제 loss 계산 
-        
-    pred_uncert = None 
-
-    # if mode == EVAL:
-    #     pred_depth_mask, _, _ = model_forward_multiframe(inputs_dic, model, train_cfg.K, mode, md_encoder)
-    # else:
-    #     pred_depth_mask = None
-
-    #total_loss
-    for loss in losses.values():
-        total_loss += loss
-    
-    if mode == TRAIN:
-        return total_loss, losses
-    else:
-        return total_loss, losses, pred_depth, pred_uncert, pred_depth
-
-
-
-# main network forward
-def model_forward(inputs, model, K=1):  
-    pred_depth, features, fusion_features = model['depth'](inputs, K)
-    return pred_depth, features, fusion_features
-
-# JINLOVESPHO
-def model_forward_multiframe_colorLoss(inputs, model, K=1, mode=None):  
-    pred_depth, pred_color, features, fusion_features = model['depth'](inputs, K, mode)
-    return pred_depth, pred_color, features, fusion_features
-
-# JINLOVESPHO
-def model_forward_multiframe(inputs_dic, model, K, mode):  
-    pred_depth, features, fusion_features = model['depth'](inputs_dic, K, mode)
-    return pred_depth, features, fusion_features
-
-# debug manydepth
-def model_forward_multiframe_debugmanydepth(inputs_dic, model, K, mode, md_encoder):  
-    pred_depth, features, fusion_features = model['depth'](inputs_dic, K, mode, md_encoder)
-    return pred_depth, features, fusion_features
-
-        
 
 
 ############################################################################## 
 ########################    loss function set
 ############################################################################## 
   
-def compute_sup_loss(pred_depth, gt_depth, mask=None): 
-    # breakpoint()
-    if mask == None:
+def compute_sup_loss(pred_depth, gt_depth, non_zero_mask):
+    if non_zero_mask == None:
         loss = torch.abs(pred_depth - gt_depth.detach()).mean()
     else:
-        loss = torch.abs(pred_depth[mask] - gt_depth.detach()[mask]).mean()
+        loss = torch.abs(pred_depth[non_zero_mask] - gt_depth.detach()[non_zero_mask]).mean()
     return loss
 
-def compute_sup_loss_bbox(pred_depth, gt_depth, mask=None): 
-    # breakpoint()
-    if mask == None:
-        loss = torch.abs(pred_depth - gt_depth.detach()).mean()
-    else:
-        loss = torch.abs(pred_depth[mask] - gt_depth.detach()[mask]).mean()
-    return loss
+def compute_selfsup_loss(inputs, model_outs, train_args, mode):
+    loss=0
+    loss_records=0
+    
+    device = model_outs['pred_depth4'].device
+    
+    axis_trans = model_outs['ca_map4_pose'].mean(dim=[2,3,4,5]).view(-1,2,1,6) # (b,12) -> (b,2,1,6)
+    angle = axis_trans[..., :3]     # (b,2,1,3)
+    translation = axis_trans[..., 3:]   # (b,2,1,3)
+    rel_pose = transformation_from_parameters(angle[:, 0], translation[:, 0], invert=True)  # (b,4,4)
+    
+    backproject_depth = utils.BackprojectDepth(train_args.batch_size, train_args.re_height, train_args.re_width)
+    backproject_depth.to(device)
+    project_3d = utils.Project3D(train_args.batch_size, train_args.re_height, train_args.re_width)
+    project_3d.to(device)
+    
+    
+    reprojection_losses = []
+    
+    ## back to current
+    cam_points = backproject_depth(model_outs['pred_depth4'], inputs['inv_K',0])
+    pix_coords = project_3d(cam_points, inputs['K',0], rel_pose)
+
+    recon_img = F.grid_sample(inputs['color',-1,0], pix_coords.to(torch.float32), padding_mode="border")
+     
+    reprojection_losses.append(utils.compute_reprojection_loss(recon_img, inputs['color',0,0]))
+    reprojection_losses = torch.cat(reprojection_losses, 1)
+    reprojection_loss = reprojection_losses
+    
+    # ## auto masking
+    identity_reprojection_losses = []
+    identity_reprojection_losses.append(
+        utils.compute_reprojection_loss(inputs['color',-1,0], inputs['color',0,0]))
+    
+    identity_reprojection_losses = torch.cat(identity_reprojection_losses, 1)
+    identity_reprojection_loss = identity_reprojection_losses
+
+    identity_reprojection_loss += torch.randn(
+        identity_reprojection_loss.shape, device=device) * 0.00001
+
+    combined = torch.cat((identity_reprojection_loss, reprojection_loss), dim=1)
+
+    mask = torch.argmin(combined, dim=1).unsqueeze(1).float()
+    mask[mask>=1] = 1.0
+    loss_record = mask * reprojection_loss / mask.sum().detach()
+    loss_records += loss_record.mean().detach()
+
+    to_optimise, idxs = torch.min(combined, dim=1)
+
+    loss += to_optimise.mean()
+    
+    return loss, recon_img
+
+    # mean_disp = disp.mean(2, True).mean(3, True)
+    # norm_disp = disp / (mean_disp + 1e-7)
+    # smooth_loss = utils.get_smooth_loss(norm_disp, target)
+
+    # smooth_loss += (1e-3) * smooth_loss / (2 ** scale)
+
 
 def compute_sup_mask_loss(pred_depth, gt_depth): 
     pred_depth = F.interpolate(pred_depth, gt_depth.shape[-2:], mode="bilinear", align_corners = False)

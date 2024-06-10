@@ -29,7 +29,7 @@ class ForkedPdb(pdb.Pdb):
             sys.stdin = _stdin
 
 
-class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
+class MF_Depth_Try7(nn.Module):
     def __init__(
         self,
         *,
@@ -40,16 +40,13 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         vit_features,
         use_readout="ignore",
         start_index=1,
-        num_prev_frame=1,
         masking_ratio=0.5,
-        num_frame_to_mask=1,
         cross_attn_depth = 8,
-        croco = None
+        croco = None,
     ):
         super().__init__()
-        
-        # JINLOVESPHO
-        self.num_prev_frame=num_prev_frame
+    
+        # device
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
         # ViT
@@ -57,6 +54,13 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         self.encoder.transformer.set_hooks(hooks)
         self.hooks = hooks
         self.vit_features = vit_features 
+        
+        self.target_size = encoder.get_image_size() # hg
+        self.img_h, self.img_w = self.encoder.get_image_size()
+        self.patch_h, self.patch_w = self.encoder.get_patch_size()
+        self.num_patch_h, self.num_patch_w = self.img_h//self.patch_h, self.img_w//self.patch_w
+        
+        self.max_depth = max_depth
 
         #read out processing (ignore / add / project[dpt use this process])
         readout_oper = get_readout_oper(vit_features, features, use_readout, start_index)
@@ -65,86 +69,28 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         self.act_postprocess1 = nn.Sequential(
             # readout_oper[0],
             Transpose(1, 2),
-            nn.Conv2d(
-                in_channels=vit_features,       # vit_features = d_model = embedding dim 의미 
-                out_channels=features[0],
-                kernel_size=1,
-                stride=1,
-                padding=0,
-            ),
-            nn.ConvTranspose2d(
-                in_channels=features[0],
-                out_channels=features[0],
-                kernel_size=4,
-                stride=4,
-                padding=0,
-                bias=True,
-                dilation=1,
-                groups=1,
-            ),
-        )
+            nn.Conv2d(in_channels=vit_features, out_channels=features[0], kernel_size=1, stride=1, padding=0),
+            nn.ConvTranspose2d(in_channels=features[0], out_channels=features[0], kernel_size=4, stride=4, padding=0, bias=True, dilation=1, groups=1), )
+        
         self.act_postprocess2 = nn.Sequential(
             # readout_oper[1],
             Transpose(1, 2),
-            nn.Conv2d(
-                in_channels=vit_features,
-                out_channels=features[1],
-                kernel_size=1,
-                stride=1,
-                padding=0,
-            ),
-            nn.ConvTranspose2d(
-                in_channels=features[1],
-                out_channels=features[1],
-                kernel_size=2,
-                stride=2,
-                padding=0,
-                bias=True,
-                dilation=1,
-                groups=1,
-            ),
-        )
+            nn.Conv2d(in_channels=vit_features,out_channels=features[1],kernel_size=1,stride=1,padding=0,),
+            nn.ConvTranspose2d(in_channels=features[1],out_channels=features[1],kernel_size=2,stride=2,padding=0,bias=True,dilation=1,groups=1,),)
+        
         self.act_postprocess3 = nn.Sequential(
             # readout_oper[2],
             Transpose(1, 2),
-            nn.Conv2d(
-                in_channels=vit_features,
-                out_channels=features[2],
-                kernel_size=1,
-                stride=1,
-                padding=0,
-            ),
-        )
+            nn.Conv2d(in_channels=vit_features,out_channels=features[2],kernel_size=1,stride=1,padding=0,),)
+        
         self.act_postprocess4 = nn.Sequential(
             # readout_oper[3],
             Transpose(1, 2),
-            nn.Conv2d(
-                in_channels=vit_features,
-                out_channels=features[3],
-                kernel_size=1,
-                stride=1,
-                padding=0,
-            ),
-            nn.Conv2d(
-                in_channels=features[3],
-                out_channels=features[3],
-                kernel_size=3,
-                stride=2,
-                padding=1,
-            ),
-        )
+            nn.Conv2d(in_channels=vit_features,out_channels=features[3],kernel_size=1,stride=1,padding=0,),
+            nn.Conv2d(in_channels=features[3],out_channels=features[3],kernel_size=3,stride=2,padding=1,),)
         
         self.unflatten = nn.Sequential(
-            nn.Unflatten(
-                2,
-                torch.Size(                                                                 # get_image_size()= (192,640)
-                    [                                                                       # get_patch_size()= (16,16)
-                        encoder.get_image_size()[0] // encoder.get_patch_size()[0],         # 즉 이 과정은 하나의 
-                        encoder.get_image_size()[1] // encoder.get_patch_size()[1],
-                    ]
-                ),
-            )
-        )
+            nn.Unflatten(2, torch.Size([self.num_patch_h, self.num_patch_w])))
 
         self.scratch = make_scratch(features, 256)
         self.scratch.refinenet1 = make_fusion_block(features=256, use_bn=False)
@@ -160,14 +106,10 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
             nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
             nn.Sigmoid(),
             nn.Identity(),
-        )
-
-        self.max_depth = max_depth
-        self.target_size = encoder.get_image_size()
+        ) 
         
         # JINLOVESPHO
         self.masking_ratio=masking_ratio
-        self.num_frame_to_mask = num_frame_to_mask
         
         # only make one mask token 
         self.msk_tkn1 = nn.Parameter(torch.randn(vit_features))
@@ -193,11 +135,6 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         
         self.position_getter = PositionGetter()
         
-        # ways to fuse cross attn map
-        # self.fuse_cross_attn_module1 = Fuse_Cross_Attn_Module1(concat_dim=480+768, out_dim=768)     # concat cAttnMap + cAttnOut
-        # self.fuse_cross_attn_module2 = Fuse_Cross_Attn_Module2(in_dim=12*480, out_dim=768)             # only linear cAttnMap
-        # self.fuse_cross_attn_module3 = Fuse_Cross_Attn_Module3(in_dim=768, out_dim=480)             # only linear cAttnOut
-        
         # conv4d 
         conv4d_out = 128
         self.conv4d_module1 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
@@ -216,29 +153,26 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
                                              Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
                                              Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
         
-        
-        
+
         # cmap linear 
         self.cmap1_linear = nn.Linear(26112, vit_features)    # (128,768)
         self.cmap2_linear = nn.Linear(26112, vit_features)  
         self.cmap3_linear = nn.Linear(26112, vit_features)  
         self.cmap4_linear = nn.Linear(26112, vit_features)  
         
-    def forward(self, inputs_dic, K = 1, mode=None):
-        '''
-        img_frames[0] : current t image (b,3,h,w)=(b,3,192,640)
-        img_frames[1] : previous t-1 image 
-        '''
+    def forward(self, inputs, train_args, mode):
         
-        if mode == 0:   # mode=TRAIN
-            img_frames = inputs_dic['color']
-        elif mode == 1: # mode=EVAL
-            img_frames = inputs_dic['color_aug']
-   
-        img_intMs = inputs_dic['intM']
-        img_extMs = inputs_dic['extM']
-        
-        # breakpoint()
+        img_frames=[]
+        if mode == 0:
+            img_frames.append(inputs['color',  0, 0])   # curr_frame : [0]
+            img_frames.append(inputs['color', -1, 0])   # prev_frame : [1]
+            img_frames.append(inputs['color',  1, 0])   # future_frame: [2]
+        else:
+            img_frames.append(inputs['color_aug',  0, 0])   
+            img_frames.append(inputs['color_aug', -1, 0])   
+            img_frames.append(inputs['color_aug',  1, 0])   
+
+
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
         tokenized_frames = []
         poses = []
@@ -254,7 +188,6 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         
         # batch_size, length, dim, device
         b,n,dim = tokenized_frames[0].shape     # (8,480,768)
-        device = tokenized_frames[0].device.type  
         
         # number of patches to mask
         num_p_msk = int(self.masking_ratio * n ) if mode == 0 else 0    # validation(mode=1) 이면 num_p_mask=0 으로 만들어서 unmask !
@@ -265,8 +198,6 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         idx_msk = idx_msk.sort().values
         idx_umsk = idx_umsk.sort().values
         idx_bs = torch.arange(b)[:,None]
-        
-        # ForkedPdb().set_trace()
         
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
@@ -283,10 +214,6 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk) 
         msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk) 
         
-        # add positional embedding for masked tokens
-        
-        # ForkedPdb().set_trace()
-        
         # t frame encoder
         glob1 = self.encoder.transformer(frame0_unmsk_tkn, poses0_unmsk_tkn)     # (8,192,768)
         glob1_layer_1 = self.encoder.transformer.features[0]                    # (8,192,768)
@@ -302,7 +229,7 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         glob2_layer_4 = self.encoder.transformer.features[3]      
 
         # encoder output1 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
         frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1
 
@@ -311,7 +238,7 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
             glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
         
         # encoder output2 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
         frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2
 
@@ -320,7 +247,7 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
             glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
         
         # encoder output3 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
         frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
 
@@ -329,13 +256,15 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
             glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
 
         # encoder output4 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
         frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4
 
         if not self.encoder.croco:
             frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
             glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
+            
+        breakpoint()
         
         # cross attention output
         c_attn_out1, c_attn_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) # (b,480,768)
@@ -444,7 +373,7 @@ class Masked_DPT_Multiframe_Croco_Try6(nn.Module):
         # pred_depth = (B,1,192,640)
         # features = len() = 4 = transformer 의 중간 layer outputs, (B,N,D)
         # fusion_features len() = 4 = 위 transformer 의 중간 layer outputs 를 CNN refinenet에 넣기 위해 img shape으로 여러 scale로 reshape한 (B,C,H,W) 꼴 
-        return pred_depth, features, fusion_features
+        return pred_depth
     
     
     def rollout(self, attentions, discard_ratio, head_fusion, device):

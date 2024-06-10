@@ -10,7 +10,7 @@ Train:
   start_epoch: 0
   end_epoch: 50
   save_epoch_freq: 5
-  batch_size: 4
+  batch_size: 2
   num_workers: 8
   lr: 1e-4
   K: 1                 # set number of K for K-way masking, 64 is the default

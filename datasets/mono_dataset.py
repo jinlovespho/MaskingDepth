@@ -69,34 +69,28 @@ class MonoDataset(data.Dataset):
                  filenames,
                  height,
                  width,
-                 use_box,
-                 gt_num = -1,
+                 frame_idxs,
+                 num_scales,
                  is_train=False,
-                 img_ext='.jpg',
-                 num_prev_frame=None):
+                 img_ext='.jpg'):
         super(MonoDataset, self).__init__()
+        
         self.data_path = data_path
         self.filenames = filenames
         self.height = height
         self.width = width
+        self.num_scales = num_scales
         self.interp = Image.ANTIALIAS
-        self.use_box = use_box
+        
+        self.frame_idxs = frame_idxs
+        
         self.is_train = is_train
         self.img_ext = img_ext
-        self.MAX_BOX_NUM = 8
+        
         self.loader = pil_loader
         self.to_tensor = transforms.ToTensor()
         
-        # Magnet 에서 가져와 O
-        # image resolution
-        # 여기를 제대로 한지 모르겠네.. 나중에 다시 봐야 O
-        self.img_H = 375
-        self.img_W = 1242
-        self.dpv_H = self.height
-        self.dpv_W = self.width
-        # ray array
-        self.ray_array = self.get_ray_array()
-        
+        self.MAX_BOX_NUM = 8
         
         # We need to specify augmentations differently in newer versions of torchvision.
         # We first try the newer tuple version; if this fails we fall back to scalars
@@ -112,42 +106,75 @@ class MonoDataset(data.Dataset):
             self.contrast = 0.2
             self.saturation = 0.2
             self.hue = 0.1
+            
+        self.resize = {}
+        for i in range(self.num_scales):
+            s = 2 ** i
+            self.resize[i] = transforms.Resize((self.height // s, self.width // s),
+                                               interpolation=self.interp)
 
-        self.resize = transforms.Resize((self.height, self.width), interpolation=self.interp)
+        # self.resize = transforms.Resize((self.height, self.width), interpolation=self.interp)
         self.load_depth = self.check_depth()
+        
         self.rand_aug = rand_augment_transform(config_str = 'rand-n{}-m{}-mstd0.5'.format(3, 5), hparams={})
         
-
-        # full_data_num = len(self.filenames))
-        self.gt_use = set([i for i in range(len(self.filenames))])
-        if not(gt_num == -1):
-            use_flag = [i for i in range(len(self.filenames))]
-            random.shuffle(use_flag)
-            self.gt_use = self.gt_use - set(use_flag[:(len(self.filenames) - gt_num)])
-            
-
-    def preprocess(self, inputs):
+        # Magnet 에서 가져와 O
+        # image resolution
+        # 여기를 제대로 한지 모르겠네.. 나중에 다시 봐야 O
+        self.img_H = 375
+        self.img_W = 1242
+        self.dpv_H = self.height
+        self.dpv_W = self.width
+        
+        # ray array
+        self.ray_array = self.get_ray_array()
+                
+                
+    def preprocess(self, inputs, color_aug):
         """Resize colour images to the required scales and augment if required
 
         We create the color_aug object in advance and apply the same augmentation to all
         images in this item. This ensures that all images input to the pose network receive the
         same augmentation.
         """
-        origin = inputs["color"]
-        do_weak = self.is_train and random.random() > 0.5
-        Geo_aug = random.randint(0,3)
+        for k in list(inputs):
+            frame = inputs[k]
+            
+            if "color" in k:
+                n, im, i = k
+                for i in range(self.num_scales):
+                    inputs[(n, im, i)] = self.resize[i](inputs[(n, im, i - 1)])
+
+        for k in list(inputs):
+            f = inputs[k]
+            if "color" in k:
+                n, im, i = k
+                inputs[(n, im, i)] = self.to_tensor(f)
+                inputs[(n + "_aug", im, i)] = self.to_tensor(color_aug(f))
+
+    # def preprocess(self, inputs):
+    #     """Resize colour images to the required scales and augment if required
+
+    #     We create the color_aug object in advance and apply the same augmentation to all
+    #     images in this item. This ensures that all images input to the pose network receive the
+    #     same augmentation.
+    #     """
+            
+    #     origin = inputs["color"]
+    #     do_weak = self.is_train and random.random() > 0.5
+    #     Geo_aug = random.randint(0,3)
         
-        #weak aug
-        if do_weak:
-            weak_aug = transforms.ColorJitter(
-                            self.brightness, self.contrast, self.saturation, self.hue)
-            inputs["color"] = self.to_tensor(self.resize(weak_aug(inputs["color"])))
-            torchvision.utils.save_image(inputs["color"], "./aaa.png")
-        else:
-            inputs["color"] = self.to_tensor(self.resize(inputs["color"]))
+    #     #weak aug
+    #     if do_weak:
+    #         weak_aug = transforms.ColorJitter(
+    #                         self.brightness, self.contrast, self.saturation, self.hue)
+    #         inputs["color"] = self.to_tensor(self.resize(weak_aug(inputs["color"])))
+    #         torchvision.utils.save_image(inputs["color"], "./aaa.png")
+    #     else:
+    #         inputs["color"] = self.to_tensor(self.resize(inputs["color"]))
                         
-        #strong aug
-        inputs["color_aug"] = self.to_tensor(self.resize(self.rand_aug(origin)))        
+    #     #strong aug
+    #     inputs["color_aug"] = self.to_tensor(self.resize(self.rand_aug(origin)))        
     
     def __len__(self):
         return len(self.filenames)
@@ -202,7 +229,7 @@ class MonoDataset(data.Dataset):
         }
         return cam_intrinsics
     
-
+    
     def __getitem__(self, index):
         """Returns a single training item from the dataset as a dictionary.
  
@@ -219,6 +246,8 @@ class MonoDataset(data.Dataset):
             "box"                                   for using bounding box
         """
         inputs = {}
+        
+        do_color_aug = self.is_train and random.random() > 0.5
         do_flip = self.is_train and random.random() > 0.5
 
         if type(self).__name__ in "CityscapeDataset":
@@ -245,9 +274,72 @@ class MonoDataset(data.Dataset):
         else:
             line = self.filenames[index].split()
             folder = line[0]
+            
+            if len(line) == 3:
+                frame_index = int(line[1])
+            else:
+                frame_index = 0
+
+            if len(line) == 3:
+                side = line[2]
+            else:
+                side = None
+
+            for i in self.frame_idxs:
+                if i == "s":
+                    other_side = {"r": "l", "l": "r"}[side]
+                    inputs[("color", i, -1)] = self.get_color(folder, frame_index, other_side, do_flip)
+                else:
+                    inputs[("color", i, -1)] = self.get_color(folder, frame_index + i, side, do_flip)
+
+
+            # adjusting intrinsics to match each scale in the pyramid
+            for scale in range(self.num_scales):
+                K = self.K.copy()
+
+                K[0, :] *= self.width // (2 ** scale)
+                K[1, :] *= self.height // (2 ** scale)
+
+                inv_K = np.linalg.pinv(K)
+
+                inputs[("K", scale)] = torch.from_numpy(K)
+                inputs[("inv_K", scale)] = torch.from_numpy(inv_K)
+                        
+            if do_color_aug:
+                color_aug = transforms.ColorJitter( self.brightness, self.contrast, self.saturation, self.hue)
+            else:
+                color_aug = (lambda x: x)
+
+            # ForkedPdb().set_trace() 
+            self.preprocess(inputs, color_aug)  
+            
+            for i in self.frame_idxs:
+                del inputs[("color", i, -1)]
+                del inputs[("color_aug", i, -1)]
+
+            if self.load_depth:
+                depth_gt = self.get_depth(folder, frame_index, side, do_flip)
+                inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
+                inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
+        
+            # from torchvision.utils import save_image 
+            # save_image(inputs['depth_gt'], '../d1.jpg')
+            # save_image(inputs['depth_gt'], '../d1_n.jpg', normalize=True)
+            # ForkedPdb().set_trace()
+            
+            if "s" in self.frame_idxs:
+                stereo_T = np.eye(4, dtype=np.float32)
+                baseline_sign = -1 if do_flip else 1
+                side_sign = -1 if side == "l" else 1
+                stereo_T[0, 3] = side_sign * baseline_sign * 0.1
+
+                inputs["stereo_T"] = torch.from_numpy(stereo_T)
+            
+            
+            # JINLOVESPHO 여기서부터 수정 위에까지는 monodepth2
             frame_index = int(line[1])
             side = line[2]
-            inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+            # inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
             inputs["box"] = self.get_Bbox(folder, frame_index, side, do_flip)
             inputs['curr_folder']=folder
             inputs['curr_frame']=frame_index
@@ -259,46 +351,117 @@ class MonoDataset(data.Dataset):
             drive = line[0].split('/')[1].split('_')[-2] 
             p_data = pykitti.raw(dataset_path, date, drive, frames=[frame_index], imtype='jpg')
      
-            # ForkedPdb().set_trace()
             # cam intrinsics
             cam_intrins = self.get_cam_intrinsics(p_data)
             inputs['ray'] = cam_intrins['unit_ray_array_2D']
             inputs['intM'] = cam_intrins['intM']
-            # ForkedPdb().set_trace()
-            
+
             # cam extrinsic (pose)
             pose = p_data.oxts[0].T_w_imu
             M_imu2cam = p_data.calib.T_cam2_imu
             extM = np.matmul(M_imu2cam, np.linalg.inv(pose))
             inputs['extM'] = extM
         
-            # ForkedPdb().set_trace()
-            
-            K = self.K.copy()
-            K[0, :] *= self.width 
-            K[1, :] *= self.height 
-
-            inv_K = np.linalg.pinv(K)
-
-            inputs["K"] = torch.from_numpy(K)
-            inputs["inv_K"] = torch.from_numpy(inv_K)
-
-            stereo_T = np.eye(4, dtype=np.float32)
-            baseline_sign = -1 if do_flip else 1
-            side_sign = -1 if side == "l" else 1
-            stereo_T[0, 3] = side_sign * baseline_sign * 0.1
-
-            inputs["stereo_T"] = torch.from_numpy(stereo_T)
-            
-            
-        self.preprocess(inputs)
-        
-        if self.load_depth:
-            depth_gt = self.get_depth(folder, frame_index, side, do_flip)
-            inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
-            inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
-
+          
         return inputs
+    
+
+    # def __getitem__(self, index):
+    #     """Returns a single training item from the dataset as a dictionary.
+ 
+    #     Values correspond to torch tensors.
+    #     Keys in the dictionary are either strings or tuples:
+    #         ("color", <frame_id>, <scale>)          for raw colour images,
+    #         ("color_aug", <frame_id>, <scale>)      for augmented colour images,
+
+    #         ("color")                               for raw colour images,
+    #         ("color_aug")                           for augmented colour images,
+    #         ("K") or ("inv_K")                      for camera intrinsics,
+    #         "stereo_T"                              for camera extrinsics, and
+    #         "depth_gt"                              for ground truth depth maps.
+    #         "box"                                   for using bounding box
+    #     """
+    #     inputs = {}
+    #     do_flip = self.is_train and random.random() > 0.5
+
+    #     if type(self).__name__ in "CityscapeDataset":
+    #         folder, frame_index, side = self.index_to_folder_and_frame_idx(index)
+    #         inputs.update(self.get_color(folder, frame_index, side, do_flip))
+
+    #     elif type(self).__name__ in "NYUDataset" or type(self).__name__ in "Virtual_Kitti":
+    #         if type(self).__name__ in "NYUDataset":
+    #             split_com = '/'
+    #         else:
+    #             split_com = ' '
+           
+    #         folder = os.path.join(*self.filenames[index].split(split_com)[:-1])
+            
+    #         if self.is_train:
+    #             frame_index = int(self.filenames[index].split(split_com)[-1])
+    #             side = None
+    #             inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+    #         else:
+    #             frame_index = self.filenames[index].split(split_com)[-1]
+    #             side= None
+    #             inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+
+    #     else:
+    #         line = self.filenames[index].split()
+    #         folder = line[0]
+    #         frame_index = int(line[1])
+    #         side = line[2]
+    #         inputs["color"] = self.get_color(folder, frame_index, side, do_flip)
+    #         inputs["box"] = self.get_Bbox(folder, frame_index, side, do_flip)
+    #         inputs['curr_folder']=folder
+    #         inputs['curr_frame']=frame_index
+            
+    #         # MAGNET
+    #         # preparation for extrinsic matrix
+    #         dataset_path = self.data_path
+    #         date = line[0].split('/')[0]
+    #         drive = line[0].split('/')[1].split('_')[-2] 
+    #         p_data = pykitti.raw(dataset_path, date, drive, frames=[frame_index], imtype='jpg')
+     
+    #         # ForkedPdb().set_trace()
+    #         # cam intrinsics
+    #         cam_intrins = self.get_cam_intrinsics(p_data)
+    #         inputs['ray'] = cam_intrins['unit_ray_array_2D']
+    #         inputs['intM'] = cam_intrins['intM']
+    #         # ForkedPdb().set_trace()
+            
+    #         # cam extrinsic (pose)
+    #         pose = p_data.oxts[0].T_w_imu
+    #         M_imu2cam = p_data.calib.T_cam2_imu
+    #         extM = np.matmul(M_imu2cam, np.linalg.inv(pose))
+    #         inputs['extM'] = extM
+        
+    #         # ForkedPdb().set_trace()
+            
+    #         K = self.K.copy()
+    #         K[0, :] *= self.width 
+    #         K[1, :] *= self.height 
+
+    #         inv_K = np.linalg.pinv(K)
+
+    #         inputs["K"] = torch.from_numpy(K)
+    #         inputs["inv_K"] = torch.from_numpy(inv_K)
+
+    #         stereo_T = np.eye(4, dtype=np.float32)
+    #         baseline_sign = -1 if do_flip else 1
+    #         side_sign = -1 if side == "l" else 1
+    #         stereo_T[0, 3] = side_sign * baseline_sign * 0.1
+
+    #         inputs["stereo_T"] = torch.from_numpy(stereo_T)
+            
+            
+    #     self.preprocess(inputs)
+        
+    #     if self.load_depth:
+    #         depth_gt = self.get_depth(folder, frame_index, side, do_flip)
+    #         inputs["depth_gt"] = np.expand_dims(depth_gt, 0)
+    #         inputs["depth_gt"] = torch.from_numpy(inputs["depth_gt"].astype(np.float32))
+
+    #     return inputs
 
     def get_color(self, folder, frame_index, side, do_flip):
         raise NotImplementedError
@@ -308,3 +471,5 @@ class MonoDataset(data.Dataset):
 
     def get_depth(self, folder, frame_index, side, do_flip):
         raise NotImplementedError
+    
+    

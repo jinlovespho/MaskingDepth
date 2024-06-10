@@ -6,6 +6,7 @@ import matplotlib.cm as cm
 import PIL.Image as pil 
 import cv2 
 import utils
+import wandb
 
 def evaluate_metric(train_cfg, pred_depth, inputs):
     if train_cfg.real.dataset ==  'cityscape':
@@ -257,73 +258,47 @@ def compute_errors(gt, pred):
 
 
 # visualize on wandb
-def visualize(inputs, pred_depth, pred_depth_mask, pred_uncert, wandb, sample_num=4):
+def visualize(inputs, pred_depth, model_outs, train_args, sample_num=4):
     b = pred_depth.shape[0]
     sample_num = b if b < sample_num else sample_num
-
-    color  = F.interpolate(inputs['color'], inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners=False)
-
+       
+    input_curr_img = F.interpolate(inputs['color',0,0], inputs['depth_gt'].shape[-2:], mode="bilinear", align_corners=False)
+    
     for i in range(sample_num):
         wandb_eval_dict = {}
         val_depth = []
 
-        # weak aug 
-        if 'color' in inputs:
-            #rgb image 
-            img_we = color[i]
-            img_we *= 255
-
-            #disp image
-            disp_weak_np = pred_depth[i].squeeze().cpu().numpy() 
-            vmax = np.percentile(disp_weak_np, 95)
-            normalizer = mpl.colors.Normalize(vmin=disp_weak_np.min(), vmax=vmax)
-            mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
-            colormapped_im = (mapper.to_rgba(disp_weak_np)[:, :, :3] * 255).astype(np.uint8)
-            disp_img_weak = pil.fromarray(colormapped_im)
-
-            val_depth.append(wandb.Image(img_we, caption="Input Image(weak)"))
-            val_depth.append(wandb.Image(disp_img_weak, caption="Pred Depth Image(weak)"))
-
-            # gt_depth
-            gt_depth = inputs['depth_gt'][i].squeeze().cpu().numpy() 
-            vmax = np.percentile(gt_depth, 95)
-            normalizer = mpl.colors.Normalize(vmin=gt_depth.min(), vmax=vmax)
-            mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
-            colormapped_im = (mapper.to_rgba(gt_depth)[:, :, :3] * 255).astype(np.uint8)
-            gt_depth = pil.fromarray(colormapped_im)
-
-            val_depth.append(wandb.Image(gt_depth, caption="GT Depth Image"))
-
-        #strong aug 
-        if 'color_aug' in inputs:
-            #rgb image 
-            img_st = inputs['color_aug'][i].clone().detach().permute(1,2,0).cpu().numpy() 
-            img_st *= 255     
-
-            #disp image
-            disp_strong_np = pred_depth_mask[i].squeeze().cpu().numpy() 
-            vmax = np.percentile(disp_strong_np, 95)
-            normalizer = mpl.colors.Normalize(vmin=disp_strong_np.min(), vmax=vmax)
-            mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
-            colormapped_im = (mapper.to_rgba(disp_strong_np)[:, :, :3] * 255).astype(np.uint8)
-            disp_img_strong = pil.fromarray(colormapped_im)
+        #rgb image 
+        vis_curr_img = input_curr_img[i]
+        vis_curr_img *= 255
+        val_depth.append(wandb.Image(vis_curr_img, caption="Curr Input Image"))
         
-            # val_depth.append(wandb.Image(img_st, caption="strong_augment"))
-            # val_depth.append(wandb.Image(disp_img_strong, caption="strong_depthmap"))
+        # pred depth
+        vis_pred_depth = pred_depth[i].squeeze().cpu().numpy() 
+        vmax = np.percentile(vis_pred_depth, 95)
+        normalizer = mpl.colors.Normalize(vmin=vis_pred_depth.min(), vmax=vmax)
+        mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+        colormapped_pred_depth = (mapper.to_rgba(vis_pred_depth)[:, :, :3] * 255).astype(np.uint8)
+        vis_pred_depth = pil.fromarray(colormapped_pred_depth)
+        val_depth.append(wandb.Image(vis_pred_depth, caption="Pred Depth"))
+        
+        # gt_depth
+        gt_depth = inputs['depth_gt'][i].squeeze().cpu().numpy() 
+        vmax = np.percentile(gt_depth, 95)
+        normalizer = mpl.colors.Normalize(vmin=gt_depth.min(), vmax=vmax)
+        mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+        colormapped_gt_depth = (mapper.to_rgba(gt_depth)[:, :, :3] * 255).astype(np.uint8)
+        gt_depth = pil.fromarray(colormapped_gt_depth)
+        val_depth.append(wandb.Image(gt_depth, caption="GT Depth"))
+  
+        
+        if train_args.training_loss == 'selfsupervised_img_recon':
+            pass
+
         
         wandb_eval_dict["validation depthmap"] = val_depth
-
-        # # uncertainty
-        if not(pred_uncert == None):
-            uncert_np = pred_uncert[i].squeeze().cpu().numpy()
-            umax = uncert_np.max()
-            umin = uncert_np.min()
-            unormalizer = mpl.colors.Normalize(vmin=umin, vmax=umax)
-            umapper = cm.ScalarMappable(norm=unormalizer, cmap='hot')
-            ucolormapped_im = (umapper.to_rgba(uncert_np)[:, :, :3] * 255).astype(np.uint8)
-            uncert_img = pil.fromarray(ucolormapped_im)
-            wandb_eval_dict["uncertainty map"] = [wandb.Image(uncert_img, caption="Uncertainty map")]
-
-        # confidence
         
+        
+
+
         wandb.log(wandb_eval_dict)
