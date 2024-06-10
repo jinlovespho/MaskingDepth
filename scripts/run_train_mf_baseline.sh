@@ -29,19 +29,19 @@ MODEL_ARGS="
 --model_info mf_baseline
 --vit_type vit_base
 --pretrained_weight croco
---masking_ratio 0.0
+--masking_ratio 0.9
 --cross_attn_depth 4
 --num_prev_frame 1
 "
 
 SAVE_ARGS="
-    --epoch_save_freq 50
+    --epoch_save_freq 10
 "
 
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240215_MaskingDepth_multiframe
-    --wandb_exp_name pho_server5_gpu0_kitti_bs8_mf_baseline
+    --wandb_exp_name pho_server5_gpu1_kitti_bs8_mf_baseline_mask09
     --log_path /media/data1/jinlovespho/log/mfdepth
 "
 
@@ -50,7 +50,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=0 python ../train.py   ${DATA_ARGS} \
+CUDA_VISIBLE_DEVICES=1 python ../train.py   ${DATA_ARGS} \
                                             ${TRAINING_ARGS} \
                                             ${DEPTH_ARGS} \
                                             ${LOSS_ARGS} \

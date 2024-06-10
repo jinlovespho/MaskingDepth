@@ -22,6 +22,20 @@ def seed_everything(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     print(f"seed : {seed}")
+    
+
+def print_exp_info(train_args):
+        print('===================================')
+        print('DATASET: ', train_args.dataset)
+        print('KITTI SPLIT: ', train_args.splits)
+        print('-----------------------------------')
+        print('BATCH SIZE: ', train_args.batch_size)
+        print('MASKING_RATIO: ', train_args.masking_ratio)
+        print('-----------------------------------')
+        print('EPOCH SAVE FREQ: ', train_args.epoch_save_freq)
+        print('LOG TOOL: ', train_args.log_tool)
+        print('WANDB EXP NAME: ', train_args.wandb_exp_name)
+        print('===================================')
 
 ############################################################################## 
 ########################    model load
@@ -144,6 +158,9 @@ def model_load(train_args, device):
         print(is_load_complete)
         v.resize_pos_embed(192,640,device)
 
+        # show experiment info in terminal
+        print_exp_info(train_args)
+        
         breakpoint()
         model['depth'] = networks.MF_Depth_Baseline(encoder=v,
                                                     max_depth = train_args.max_depth,
@@ -229,6 +246,9 @@ def model_load(train_args, device):
         is_load_complete = v.load_state_dict(loaded_weight)
         print(is_load_complete)
         v.resize_pos_embed(192,640,device)
+        
+        # show experiment info in terminal
+        print_exp_info(train_args)
 
         breakpoint()
         model['depth'] = networks.MF_Depth_Try7(encoder=v,

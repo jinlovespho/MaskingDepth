@@ -36,8 +36,8 @@ if __name__ == "__main__":
         
     #optimizer & scheduler
     encode_index = len(list(model['depth'].module.encoder.parameters()))
-    optimizer = torch.optim.Adam([{"params": params_to_train[:encode_index], "lr": 1e-5}, 
-                            {"params": params_to_train[encode_index:]}], float(train_args.learning_rate))
+    optimizer = torch.optim.Adam([  {"params": params_to_train[:encode_index], "lr": 1e-5}, 
+                                    {"params": params_to_train[encode_index:]}  ],              float(train_args.learning_rate))
  
     # data loader
     train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)

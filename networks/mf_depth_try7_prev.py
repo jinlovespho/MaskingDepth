@@ -37,7 +37,7 @@ class MF_Depth_Try7(nn.Module):
         max_depth,
         features=[96, 192, 384, 768],
         hooks=[2, 5, 8, 11],
-        vit_features,
+        vit_features=768,
         use_readout="ignore",
         start_index=1,
         masking_ratio=0.5,
@@ -57,8 +57,8 @@ class MF_Depth_Try7(nn.Module):
         
         self.target_size = encoder.get_image_size() # hg
         self.img_h, self.img_w = self.encoder.get_image_size()
-        self.patch_h, self.patch_w = self.encoder.get_patch_size()
-        self.num_patch_h, self.num_patch_w = self.img_h//self.patch_h, self.img_w//self.patch_w
+        self.pH, self.pW = self.encoder.get_patch_size()
+        self.num_pH, self.num_pW = self.img_h//self.pH, self.img_w//self.pW
         
         self.max_depth = max_depth
 
@@ -90,7 +90,7 @@ class MF_Depth_Try7(nn.Module):
             nn.Conv2d(in_channels=features[3],out_channels=features[3],kernel_size=3,stride=2,padding=1,),)
         
         self.unflatten = nn.Sequential(
-            nn.Unflatten(2, torch.Size([self.num_patch_h, self.num_patch_w])))
+            nn.Unflatten(2, torch.Size([self.num_pH, self.num_pW])))
 
         self.scratch = make_scratch(features, 256)
         self.scratch.refinenet1 = make_fusion_block(features=256, use_bn=False)
@@ -98,15 +98,38 @@ class MF_Depth_Try7(nn.Module):
         self.scratch.refinenet3 = make_fusion_block(features=256, use_bn=False)
         self.scratch.refinenet4 = make_fusion_block(features=256, use_bn=False)
 
-        self.scratch.output_conv = head = nn.Sequential(
+        self.scratch.output_conv = nn.Sequential(
             nn.Conv2d(256, 256 // 2, kernel_size=3, stride=1, padding=1),
-            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),  # scale factor 16 너무 크긴 해 
             nn.Conv2d(256 // 2, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(True),
             nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
             nn.Sigmoid(),
             nn.Identity(),
         ) 
+        
+        self.depth_head = nn.Sequential(
+            nn.Conv2d(256, 256 // 2, kernel_size=3, stride=1, padding=1),
+            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            nn.ReLU(True),
+            
+            nn.Conv2d(256 // 2, 256//4, kernel_size=3, stride=1, padding=1),
+            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            nn.ReLU(True),
+            
+            nn.Conv2d(256 // 4, 256//8, kernel_size=3, stride=1, padding=1),
+            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            nn.ReLU(True),
+            
+            nn.Conv2d(256 // 8, 256//16, kernel_size=3, stride=1, padding=1),
+            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            nn.ReLU(True),
+            
+            nn.Conv2d(256//16, 1, kernel_size=1, stride=1, padding=0),
+            nn.Sigmoid(),
+            nn.Identity(),     
+        )
+
         
         # JINLOVESPHO
         self.masking_ratio=masking_ratio
@@ -124,53 +147,44 @@ class MF_Depth_Try7(nn.Module):
         # self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
         self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
-        self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
-        self.cross_attn_module2 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
-        self.cross_attn_module3 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
-                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         self.cross_attn_module4 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         
         self.position_getter = PositionGetter()
         
-        # conv4d 
+        in_c=4*self.encoder.heads
         conv4d_out = 128
-        self.conv4d_module1 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
-        
-        self.conv4d_module2 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
-        
-        self.conv4d_module3 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
-        
-        self.conv4d_module4 = nn.Sequential( Conv4d_Module(in_c=4*self.encoder.heads,   out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=conv4d_out,             out_c=conv4d_out, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)), )
-        
+    
+        # conv4d for depth
+        self.conv4d_depth = nn.Sequential( Conv4d_Module(in_c=in_c,          out_c=conv4d_out//2, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                           Conv4d_Module(in_c=conv4d_out//2, out_c=conv4d_out//2, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                           Conv4d_Module(in_c=conv4d_out//2, out_c=conv4d_out//4, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                           Conv4d_Module(in_c=conv4d_out//4, out_c=conv4d_out//4, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),
+                                           Conv4d_Module(in_c=conv4d_out//4, out_c=conv4d_out//4, ks=(3,3,3,3), pd=(1,1,0,0), str=(1,1,1,1)),)
+        # conv4d for pose
+        self.conv4d_pose = nn.Sequential( Conv4d_Module(in_c=in_c,    out_c=in_c//2, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,1,1)),
+                                          Conv4d_Module(in_c=in_c//2, out_c=in_c//4, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,1,1)),
+                                          Conv4d_Module(in_c=in_c//4, out_c=in_c//4, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,1,1)), )
 
-        # cmap linear 
-        self.cmap1_linear = nn.Linear(26112, vit_features)    # (128,768)
-        self.cmap2_linear = nn.Linear(26112, vit_features)  
-        self.cmap3_linear = nn.Linear(26112, vit_features)  
-        self.cmap4_linear = nn.Linear(26112, vit_features)  
+        # linear for img recon.
+        self.linear4_recon = nn.Linear(vit_features, 3*self.pH*self.pW)
+        
+        # linear for depth pred.
+        self.linear4_depth = nn.Linear(1920, 256)
         
     def forward(self, inputs, train_args, mode):
+        
+        outputs={}
         
         img_frames=[]
         if mode == 0:
             img_frames.append(inputs['color',  0, 0])   # curr_frame : [0]
             img_frames.append(inputs['color', -1, 0])   # prev_frame : [1]
-            img_frames.append(inputs['color',  1, 0])   # future_frame: [2]
+            # img_frames.append(inputs['color',  1, 0])   # future_frame: [2]
         else:
             img_frames.append(inputs['color_aug',  0, 0])   
             img_frames.append(inputs['color_aug', -1, 0])   
-            img_frames.append(inputs['color_aug',  1, 0])   
+            # img_frames.append(inputs['color_aug',  1, 0])   
 
 
         # tokenize input image frames(t,t-1, . . ) and add positional embeddings
@@ -209,7 +223,7 @@ class MF_Depth_Try7(nn.Module):
         poses[1] = poses[1].to(self.device)
 
         # masked tokens
-        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)   # einops 의 repeat 은 메모리 공유. 즉 다 바뀌어 
+        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)
         msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk) 
         msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk) 
         msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk) 
@@ -264,116 +278,52 @@ class MF_Depth_Try7(nn.Module):
             frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
             glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
             
-        breakpoint()
-        
-        # cross attention output
-        c_attn_out1, c_attn_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) # (b,480,768)
-        c_attn_out2, c_attn_map2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1]) # (b,n,d)    
-        c_attn_out3, c_attn_map3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
-        c_attn_out4, c_attn_map4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
+        # cross attention between t features and t-1 features
+        # and obtain ca_out and ca_map
+        ca_out4, ca_map4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
 
-        # shape of c_attn_maps
-        # c_attn_map1 = [ ca_map1[0], ca_map1[1], ca_map[2], ca_map[3] ]
-        # ca_map1[0] : (b,head,n,n)
-        
-        cat_ca_maps1 = torch.cat(c_attn_map1, dim=1)    # (b, 4*head, n,n )
-        cat_ca_maps2 = torch.cat(c_attn_map2, dim=1)
-        cat_ca_maps3 = torch.cat(c_attn_map3, dim=1)
-        cat_ca_maps4 = torch.cat(c_attn_map4, dim=1)
-
-        # prepare conv4d input 
-        img_h, img_w = self.encoder.get_image_size()
-        patch_h, patch_w = self.encoder.get_patch_size() 
-        num_patch_h, num_patch_w = img_h//patch_h, img_w//patch_w 
-        
-        cat_ca_maps1 = cat_ca_maps1.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (b,head,h,w,h,w)
-        cat_ca_maps2 = cat_ca_maps2.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )  # (8,12,12,40,12,40)
-        cat_ca_maps3 = cat_ca_maps3.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
-        cat_ca_maps4 = cat_ca_maps4.view(b, 4*self.encoder.heads, num_patch_h, num_patch_w, num_patch_h, num_patch_w )
-        # avg_cmap1 = rearrange(avg_cmap1, 'b head (h1 w1) (h2 w2) -> b head h1 w1 h2 w2', h1=num_patch_h, h2=num_patch_h)
+        cat_ca_maps4 = torch.cat(ca_map4, dim=1)    # (b,4*head,n,n)    #(b,48,480,480)
+        cat_ca_maps4 = cat_ca_maps4.view(b, 4*self.encoder.heads, self.num_pH, self.num_pW, self.num_pH, self.num_pW )  # (b,head,h,w,h,w)  8,12,12,40,12,40)
         
         # conv4d 
-        cmap1 = self.conv4d_module1(cat_ca_maps1)  # (b, out_c, h1,w1,h2,w2)
-        cmap2 = self.conv4d_module2(cat_ca_maps2)       
-        cmap3 = self.conv4d_module3(cat_ca_maps3)
-        cmap4 = self.conv4d_module4(cat_ca_maps4)
+        ca_map4_depth = self.conv4d_depth(cat_ca_maps4)   # (b, out_c, h1,w1,h2,w2)    (b,128, 12,40,12,40)
+        ca_map4_pose = self.conv4d_pose(cat_ca_maps4)     # (b, 12, 12,40,12,40)
         
-        bs, out_c, h1, w1, h2, w2 = cmap1.shape
+
+        # pred depth
+        ca_map4_depth = rearrange(ca_map4_depth, 'b c h1 w1 h2 w2 -> b (h1 w1) (c h2 w2)')
+        pred_depth4 = self.linear4_depth(ca_map4_depth)
+        pred_depth4 = rearrange(pred_depth4, 'b (h w) c -> b c h w', h=12, w=40)    # (b,256,12,40)
+        pred_depth4 = self.depth_head(pred_depth4) # (b,1,192,640)
         
-        cmap1 = cmap1.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)   # (b,n, out_c*h2*w2)
-        cmap2 = cmap2.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)   # (b,480,26112)
-        cmap3 = cmap3.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)
-        cmap4 = cmap4.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)
+        # recon img
+        recon_img4 = self.linear4_recon(ca_out4)    # (b,480,768)
+        recon_img4 = rearrange(recon_img4, 'b (num_pH num_pW) (c pH pW) -> b c (num_pH pH) (num_pW pW)', num_pH=self.num_pH, num_pW=self.num_pW, pH=self.pH, pW=self.pW)   # (b,3,192,640)
+    
         
-        lin_cmap1 = self.cmap1_linear(cmap1)    # (b,n,d)
-        lin_cmap2 = self.cmap2_linear(cmap2)    # (b,480,768)
-        lin_cmap3 = self.cmap3_linear(cmap3)
+        outputs['pred_depth4'] = pred_depth4
+        outputs['recon_img4'] = recon_img4
+        outputs['ca_map4_pose'] = ca_map4_pose
+        
+        return outputs
+        
+        breakpoint()
+        
+        axis_trans = self.conv4d_pose_decoder(cat_ca_maps1)    # (b,12, 12,40,12,40)
+        axis_trans = axis_trans.mean(dim=[2,3,4,5]).view(-1,2,1,6) # (b,12) -> (b,2,1,6)
+        axisangle = axis_trans[..., :3]     # (b,2,1,3)
+        translation = axis_trans[..., 3:]   # (b,2,1,3)
+        rel_pose = transformation_from_parameters(axisangle[:, 0], translation[:, 0], invert=True)  # (b,4,4)
+        
+        
+        bs, out_c, h1, w1, h2, w2 = cmap4.shape
+        cmap4 = cmap4.view(bs, out_c, h1*w1, h2*w2).permute(0,2,1,3).flatten(start_dim=2)   # (b,n, out_c*h2*w2) (b,480,26112)
+        
         lin_cmap4 = self.cmap4_linear(cmap4)
         
-        layer_1 = c_attn_out1 + lin_cmap1      # (b,n,d)
-        layer_2 = c_attn_out2 + lin_cmap2
-        layer_3 = c_attn_out3 + lin_cmap3
-        layer_4 = c_attn_out4 + lin_cmap4
+        layer_4 = ca_out4 + lin_cmap4
         
-        # layer_1 = c_attn_out1
-        # layer_2 = c_attn_out2
-        # layer_3 = c_attn_out3
-        # layer_4 = c_attn_out4
         
-        # ================ decoder input preparation =====================
-        
-        layer_1 = self.act_postprocess1[0](layer_1)     # 모두 index[0] 이므로, Tranpose() 통과 의미.
-        layer_2 = self.act_postprocess2[0](layer_2)     # 즉 모두(B, 480, 768) -> Transpose -> (B, 768, 480) 된다.
-        layer_3 = self.act_postprocess3[0](layer_3)     # 이렇게 하는 이유는 2d img 꼴 처럼(C,H,W) 꼴로 표현하기 위해 channel 을 제일 앞으로 가져와 O
-        layer_4 = self.act_postprocess4[0](layer_4)     # (B,480,768)=(B,HW,C) 이기에, -> (B,C,HW)->(B,C,H,W) 로 만들기 위함
-
-
-        # transformer encoder transposed outputs (intermediate ouputs 포함 O)
-        features= [layer_1, layer_2, layer_3, layer_4]
-
-        # 이제 transformer의 output은 2D 꼴이다. (batch 생략 경우)
-        # transformer output shape = (B, 480, 768)
-        # 이것을 "CNN" decoder에 넣기 위해 3D 로 reshape 해주어야 
-        # 각 patch를 하나의 pixel로 취급하면
-        # (480,768) = (N,D) -> (C,H,W) 꼴로 만들어야 
-        # (480,768) -> (768, H, W) -> (768, height patch 개수, width patch 개수) -> (768, 192/16, 640/16) -> (768, 12, 40) 이 되는 것 ! 
-        
-        # transformer 2d (b,hw,d)꼴을 -> img 3d (b,c,h,w) 꼴로 만들어줌
-        if layer_1.ndim == 3:
-            layer_1 = self.unflatten(layer_1)       # (B,768,12,40) 
-        if layer_2.ndim == 3:   
-            layer_2 = self.unflatten(layer_2)       # (B,768,12,40)
-        if layer_3.ndim == 3:
-            layer_3 = self.unflatten(layer_3)       # (B,768,12,40)
-        if layer_4.ndim == 3:
-            layer_4 = self.unflatten(layer_4)       # (B,768,12,40)
-
-        # 여기는 refinenet에 넣기 위해 여러 scale로 만들어 O
-        layer_1 = self.act_postprocess1[1:](layer_1)    # channels 768 -> 96,  layer_1.shape: (B, 96, 48, 160) = (B,  C,    H,   W) 로 생각하면 이제 이해 O
-        layer_2 = self.act_postprocess2[1:](layer_2)    # channels 768 -> 192, layer_2.shape: (B, 192, 24, 80) = (B, 2C, 1/2H, 1/2W)
-        layer_3 = self.act_postprocess3[1:](layer_3)    # channels 768 -> 384, layer_3.shape: (B, 384, 12, 40) = (B, 4C, 1/4H, 1/4W)
-        layer_4 = self.act_postprocess4[1:](layer_4)    # channels 768 -> 768, layer_4.shape: (B, 768, 6, 20) =  (B, 8C, 1/8H, 1/8W)
-
-        # 아닌데.. 여기가 refinenet 에 넣기 전에 모든 channel 을 ? -> 256 으로 맞춰주는 conv layer들.
-        layer_1_rn = self.scratch.layer1_rn(layer_1)    # channels 96 ->  256,  layer_1_rn.shape: (B, 256, 48, 160)
-        layer_2_rn = self.scratch.layer2_rn(layer_2)    # channels 192 -> 256,  layer_2_rn.shape: (B, 256, 24, 80)
-        layer_3_rn = self.scratch.layer3_rn(layer_3)    # channels 384 -> 256,  layer_3_rn.shape: (B, 256, 12, 40)
-        layer_4_rn = self.scratch.layer4_rn(layer_4)    # channels 768 -> 256,  layer_4_rn.shape: (B, 256, 6, 20)
-        
-        fusion_features = [layer_1_rn, layer_2_rn, layer_3_rn, layer_4_rn]
-
-        # 여기가 refinenet 논문에 나오는 refinenet 이다.
-        path_4 = self.scratch.refinenet4(layer_4_rn)
-        path_3 = self.scratch.refinenet3(path_4, layer_3_rn)
-        path_2 = self.scratch.refinenet2(path_3, layer_2_rn)
-        path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
-
-        pred_depth = self.scratch.output_conv(path_1) * self.max_depth
-        
-        # pred_depth = (B,1,192,640)
-        # features = len() = 4 = transformer 의 중간 layer outputs, (B,N,D)
-        # fusion_features len() = 4 = 위 transformer 의 중간 layer outputs 를 CNN refinenet에 넣기 위해 img shape으로 여러 scale로 reshape한 (B,C,H,W) 꼴 
-        return pred_depth
     
     
     def rollout(self, attentions, discard_ratio, head_fusion, device):

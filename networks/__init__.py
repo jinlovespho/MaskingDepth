@@ -11,6 +11,7 @@ from .depth_decoder import DepthDecoder
 from .monodepth2 import Monodepth
 
 from .conv4d import Conv4d
+from .conv4d_coponerf import Encoder4D
 
 from .mask_dpt_multiframe_croco_baseline import Masked_DPT_Multiframe_Croco_Baseline
 from .mask_dpt_multiframe_croco_try1 import Masked_DPT_Multiframe_Croco_Try1
