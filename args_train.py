@@ -24,6 +24,7 @@ def get_train_args():
 
     # Loss args
     parser.add_argument('--training_loss', type=str)
+    parser.add_argument('--use_future_frame', action='store_true')
 
     # Model args 
     parser.add_argument('--model_info', type=str)

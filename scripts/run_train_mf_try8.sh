@@ -9,7 +9,7 @@ DATA_ARGS="
 "
 
 TRAINING_ARGS="
---num_epoch 30
+--num_epoch 50
 --batch_size 2
 --learning_rate 1e-4
 --num_workers 4
@@ -17,7 +17,7 @@ TRAINING_ARGS="
 "
 
 SAVE_ARGS="
-    --epoch_save_freq 3
+    --epoch_save_freq 10
 "
 
 DEPTH_ARGS="
@@ -30,7 +30,7 @@ LOSS_ARGS="
 "
 
 MODEL_ARGS="
---model_info mf_try7
+--model_info mf_try8
 --vit_type vit_base
 --pretrained_weight croco
 --num_prev_frame 1
@@ -41,7 +41,7 @@ MODEL_ARGS="
 LOGGING_ARGS="
     --log_tool asdf
     --wandb_proj_name 20240215_MaskingDepth_multiframe
-    --wandb_exp_name pho_server8_gpu0123_kitti_bs8_try7_mask08_depth_only_from_ca_map_detach
+    --wandb_exp_name pho_server8_gpu0123_kitti_bs8_try8_mask08_depth_only_from_ca_map_detach
     --log_path /home/cvlab08/projects/data/jinlovespho/log/mfdepth
 "
 

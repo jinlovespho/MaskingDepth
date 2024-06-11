@@ -1,7 +1,5 @@
 import os
 
-import yaml
-from dotmap import DotMap
 import torch
 from tqdm import tqdm
 import wandb
@@ -37,8 +35,22 @@ if __name__ == "__main__":
     #optimizer & scheduler
     encode_index = len(list(model['depth'].module.encoder.parameters()))
     optimizer = torch.optim.Adam([  {"params": params_to_train[:encode_index], "lr": 1e-5}, 
-                                    {"params": params_to_train[encode_index:]}  ],              float(train_args.learning_rate))
- 
+                                    {"params": params_to_train[encode_index:]},  ],              
+                                 
+                                 float(train_args.learning_rate))
+     
+    '''
+    params_to_train well loaded check
+    
+    tot_p = sum(i.numel() for i in params_to_train) / 1e6
+    
+    p1=sum(i.numel() for i in model['depth'].module.parameters()) / 1e6
+    p2=sum(i.numel() for i in model['pose_encoder'].module.parameters()) / 1e6
+    p3=sum(i.numel() for i in model['pose_decoder'].module.parameters()) / 1e6
+    
+    check if tot_p = p1+p2+p3 
+    '''
+  
     # data loader
     train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
                                             
@@ -117,7 +129,7 @@ if __name__ == "__main__":
                 gt_depth = inputs['depth_gt']
                 pred_depths.extend(pred_depth_orig.squeeze(1).cpu().numpy())
                 gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
-
+            
             eval_error = eval_metric(pred_depths, gt_depths, train_args)  
             error_dict = get_eval_dict(eval_error)
             error_dict["val_loss"] = eval_loss / len(val_loader)                

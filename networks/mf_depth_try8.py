@@ -30,7 +30,7 @@ class ForkedPdb(pdb.Pdb):
             sys.stdin = _stdin
 
 
-class MF_Depth_Try7(nn.Module):
+class MF_Depth_Try8(nn.Module):
     def __init__(
         self,
         *,

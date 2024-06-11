@@ -8,6 +8,7 @@ import numpy as np
 
 import datasets
 import networks
+import networks.monodepth2_networks
 import utils
 from einops import rearrange
 
@@ -85,6 +86,70 @@ def model_load(train_args, device):
         resnet_encoder = networks.ResnetEncoder(50, True, mask_layer=3)
         depth_decoder = networks.DepthDecoder(num_ch_enc=resnet_encoder.num_ch_enc, scales=range(4))
         model['depth'] = networks.Monodepth(resnet_encoder, depth_decoder, max_depth = train_args.max_depth)
+        
+    
+    # JINLOVESPHO sf_baseline
+    elif train_args.model_info == 'sf_baseline':
+        
+        v = networks.vit.ViT( image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
+                              patch_size = 16,
+                              num_classes = 1000,
+                              dim = 768,
+                              depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
+                              heads = 12,
+                              mlp_dim = 3072)
+        
+        if train_args.pretrained_weight == 'vit_base_384':
+            is_well_loaded=v.load_state_dict(torch.load("../pretrained_weights/vit_base_384.pth"))
+            print(is_well_loaded)
+            
+        v.resize_pos_embed(192,640)
+        
+        # show experiment info in terminal
+        print_exp_info(train_args)
+
+        breakpoint()
+        model['depth'] = networks.SF_Depth_Baseline(   encoder=v,
+                                                max_depth = train_args.max_depth,
+                                                features=[96, 192, 384, 768],           # 무슨 feature ?
+                                                hooks=[2, 5, 8, 11],                    # hooks ?
+                                                vit_features=768,                       # embed dim ? yes!
+                                                use_readout='project')      # DPT 에서는 cls token = readout token 이라고 부르고 projection으로 cls token 처리 
+
+            
+    # JINLOVESPHO sf_selfsup_try1
+    elif train_args.model_info == 'sf_selfsup_try1':
+        
+        v = networks.vit.ViT( image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
+                              patch_size = 16,
+                              num_classes = 1000,
+                              dim = 768,
+                              depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
+                              heads = 12,
+                              mlp_dim = 3072)
+        
+        if train_args.pretrained_weight == 'vit_base_384':
+            is_well_loaded=v.load_state_dict(torch.load("../pretrained_weights/vit_base_384.pth"))
+            print(is_well_loaded)
+            
+        v.resize_pos_embed(192,640)
+        
+        # show experiment info in terminal
+        print_exp_info(train_args)
+
+        breakpoint()
+        model['depth'] = networks.SF_Depth_SelfSup_Try1(    encoder=v,
+                                                            max_depth = train_args.max_depth,
+                                                            features=[96, 192, 384, 768],           # 무슨 feature ?
+                                                            hooks=[2, 5, 8, 11],                    # hooks ?
+                                                            vit_features=768,                       # embed dim ? yes!
+                                                            use_readout='project')
+        
+        # load monodepth2 pose network
+        model["pose_encoder"] = networks.monodepth2_networks.ResnetEncoder(18,True,num_input_images=2 )
+        model["pose_decoder"] = networks.monodepth2_networks.PoseDecoder(   model["pose_encoder"].num_ch_enc,
+                                                                            num_input_features=1,
+                                                                            num_frames_to_predict_for=2)
 
     # JINLOVESPHO mf_baseline
     elif train_args.model_info == 'mf_baseline':
@@ -261,6 +326,8 @@ def model_load(train_args, device):
                                                 cross_attn_depth = train_args.cross_attn_depth,
                                                 croco = (train_args.pretrained_weight == 'croco'),
                                                 )
+        
+
         
         
         

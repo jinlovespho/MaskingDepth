@@ -23,6 +23,12 @@ from .mask_dpt_multiframe_croco_try5 import Masked_DPT_Multiframe_Croco_Try5
 from .manydepth_layers import BackprojectDepth, Project3D
 from .mask_dpt_multiframe_croco_costvolume_try1 import Masked_DPT_Multiframe_Croco_Costvolume_Try1
 
+# Baseline
+from .sf_depth_baseline import SF_Depth_Baseline
 from .mf_depth_baseline import MF_Depth_Baseline
+
 # Self Sup 
+from .sf_depth_selfsup_try1 import SF_Depth_SelfSup_Try1
+
 from .mf_depth_try7 import MF_Depth_Try7
+from .mf_depth_try8 import MF_Depth_Try8
