@@ -127,21 +127,47 @@ class SF_Depth_SelfSup_Try1(nn.Module):
         self.scratch.refinenet3 = make_fusion_block(features=256, use_bn=False)
         self.scratch.refinenet4 = make_fusion_block(features=256, use_bn=False)
 
-        self.scratch.output_conv = head = nn.Sequential(
-            nn.Conv2d(256, 256 // 2, kernel_size=3, stride=1, padding=1),
-            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
-            nn.Conv2d(256 // 2, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
-            nn.Sigmoid(),
-            nn.Identity(),
-        )
+        # self.scratch.output_conv = head = nn.Sequential(
+        #     nn.Conv2d(256, 256 // 2, kernel_size=3, stride=1, padding=1),
+        #     Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+        #     nn.Conv2d(256 // 2, 32, kernel_size=3, stride=1, padding=1),
+        #     nn.ReLU(True),
+        #     nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+        #     nn.Sigmoid(),
+        #     nn.Identity(),
+        # )
         
-        self.conv_disp3= nn.Conv2d(256,1,3,1,1)
-        self.conv_disp2= nn.Conv2d(256,1,3,1,1)
-        self.conv_disp1= nn.Conv2d(256,1,3,1,1)
-        self.conv_disp0= nn.Conv2d(256,1,3,1,1)
-    
+        self.conv_disp3= nn.Sequential( nn.Conv2d(256, 256//2, 3, 1, 1), 
+                                        Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                                        nn.Conv2d(256//2, 32, kernel_size=3, stride=1, padding=1),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                                        nn.Sigmoid(),
+                                        )
+        
+        self.conv_disp2= nn.Sequential( nn.Conv2d(256, 256//2, 3, 1, 1), 
+                                        Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                                        nn.Conv2d(256//2, 32, kernel_size=3, stride=1, padding=1),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                                        nn.Sigmoid(),
+                                        )
+        
+        self.conv_disp1= nn.Sequential( nn.Conv2d(256, 256//2, 3, 1, 1), 
+                                        Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                                        nn.Conv2d(256//2, 32, kernel_size=3, stride=1, padding=1),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                                        nn.Sigmoid(),
+                                        )
+        
+        self.conv_disp0= nn.Sequential( nn.Conv2d(256, 256//2, 3, 1, 1), 
+                                        Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                                        nn.Conv2d(256//2, 32, kernel_size=3, stride=1, padding=1),
+                                        nn.ReLU(True),
+                                        nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
+                                        nn.Sigmoid(),
+                                        )
 
     def forward(self, inputs, train_args, mode):
         outputs={}
@@ -215,7 +241,7 @@ class SF_Depth_SelfSup_Try1(nn.Module):
 
         # pred_depth = self.scratch.output_conv(path_1) * self.max_depth  # (B,1,192,640)   self.max_depth=80 for kitti
         
-        outputs['pred_disp',3] = self.conv_disp3(path_4)    # (b,1,12,40)
+        outputs['pred_disp',3] = self.conv_disp3(path_4)    # (b,1,12,40)   # passed through sigmoid. [0~1]
         outputs['pred_disp',2] = self.conv_disp2(path_3)    # (b,1,24,80)
         outputs['pred_disp',1] = self.conv_disp1(path_2)    # (b,1,48,160)
         outputs['pred_disp',0] = self.conv_disp0(path_1)    # (b,1,96,320)

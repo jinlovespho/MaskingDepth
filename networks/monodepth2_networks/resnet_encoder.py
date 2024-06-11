@@ -53,20 +53,15 @@ def resnet_multiimage_input(num_layers, pretrained=False, num_input_images=1):
     block_type = {18: models.resnet.BasicBlock, 50: models.resnet.Bottleneck}[num_layers]
     model = ResNetMultiImageInput(block_type, blocks, num_input_images=num_input_images)
 
-    if pretrained:        
-        
-        # JINLOVESPHO
-        if num_layers == 18:
-            url = "https://download.pytorch.org/models/resnet18-f37072fd.pth"
-        elif num_layers == 50:
-            url = "https://download.pytorch.org/models/resnet50-11ad3fa6.pth"
-        
+    if pretrained:
         # loaded = model_zoo.load_url(models.resnet.model_urls['resnet{}'.format(num_layers)])
-        loaded = model_zoo.load_url(url)
+        if num_layers == 18:
+            loaded = torch.hub.load_state_dict_from_url(models.ResNet18_Weights.IMAGENET1K_V1.url)
+        elif num_layers == 50:
+            loaded = torch.hub.load_state_dict_from_url(models.ResNet50_Weights.IMAGENET1K_V1.url)
         loaded['conv1.weight'] = torch.cat(
             [loaded['conv1.weight']] * num_input_images, 1) / num_input_images
-        is_well_loaded=model.load_state_dict(loaded)
-        print('POSE RESNET ENC WELL LOADED: ',is_well_loaded)
+        model.load_state_dict(loaded)
     return model
 
 

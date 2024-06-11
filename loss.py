@@ -4,6 +4,24 @@ import torchvision
 import utils
 from utils import * 
 
+import sys
+import pdb
+
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
+
+
 TRAIN   = 0
 EVAL    = 1
 
@@ -65,8 +83,11 @@ def model_forward(inputs, model, train_args, mode):
 
 
 def pose_forward(inputs, model):
+
+    # ForkedPdb().set_trace()
     pose_inputs = [model["pose_encoder"](torch.cat( [inputs['color',-1,0], inputs['color',0,0] ], 1))]
     fa,ft = model['pose_decoder'](pose_inputs)
+    
     pose_inputs = [model["pose_encoder"](torch.cat( [inputs['color',0,0], inputs['color',1,0] ], 1))]
     ba,bt = model['pose_decoder'](pose_inputs)
 
