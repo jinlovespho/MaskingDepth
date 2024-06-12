@@ -2,7 +2,7 @@
 DATA_ARGS="
 --data_path /home/cvlab08/projects/data/KITTI
 --dataset kitti_depth
---splits eigen_temp 
+--splits eigen_temp
 --img_ext .jpg 
 --re_height 192 
 --re_width 640 
@@ -37,8 +37,8 @@ SAVE_ARGS="
 
 LOGGING_ARGS="
     --log_tool wandb
-    --wandb_proj_name 20240611_MultiFrame_Depth
-    --wandb_exp_name pho_server8_gpu0_kitti_bs16_sf_baseline_eigentemp
+    --wandb_proj_name 20240612_MultiFrame_Depth
+    --wandb_exp_name pho_server8_gpu1_kitti_bs16_sf_baseline_eigentemp
     --log_path /home/cvlab08/projects/data/jinlovespho/log/mfdepth
 "
 
@@ -47,7 +47,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=0 python ../train.py   ${DATA_ARGS} \
+CUDA_VISIBLE_DEVICES=1 python ../train.py   ${DATA_ARGS} \
                                             ${TRAINING_ARGS} \
                                             ${DEPTH_ARGS} \
                                             ${LOSS_ARGS} \

@@ -94,17 +94,15 @@ def eval_metric(pred_depths, gt_depths, train_args):
     d3 = np.zeros(num_samples, np.float32)
     
     for i in range(num_samples):
+        # gt_depth and pred_depth are numpys
         
         gt_depth = gt_depths[i]
         pred_depth = pred_depths[i]
-
-       
-                
+     
         min_depth = 0.001
         max_depth = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
-
-        # clamp values of pred_depths to min_depth and max_depth
-        # predicted depth value 가 [min_depth, max_depth] 범위를 갖도록 조정
+        
+        # clamp pred_depth values to min_depth~max_depth
         pred_depth[pred_depth < min_depth] = min_depth
         pred_depth[pred_depth > max_depth] = max_depth
         pred_depth[np.isinf(pred_depth)] = max_depth
@@ -126,14 +124,17 @@ def eval_metric(pred_depths, gt_depths, train_args):
             # kitti에서 eval 할 영역 지정
             eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1   # eval_mask[153:371, 44:1197]
 
-        # 최종적으로 valid 한 영역만 계산 하는 mask
+        # final mask for calculating only on valid regions
         valid_mask = np.logical_and(valid_mask, eval_mask)
-
+        
+        valid_gt_depth = gt_depth[valid_mask]
+        valid_pred_depth = pred_depth[valid_mask]
+        
         if train_args.training_loss == 'selfsupervised_img_recon':
-            pred_depth *= np.median(gt_depth) / np.median(pred_depth)
-            pred_depth = np.clip(pred_depth, train_args.min_depth, train_args.max_depth)
+            valid_pred_depth *= np.median(valid_gt_depth) / np.median(valid_pred_depth)
+            # pred_depth *= np.median(gt_depth) / np.median(pred_depth) 확실히 valid_pred_depth랑 차이가 있네
 
-        silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth[valid_mask], pred_depth[valid_mask])
+        silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(valid_gt_depth, valid_pred_depth)
     
     print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
         'd1', 'd2', 'd3', 'AbsRel', 'SqRel', 'RMSE', 'RMSElog', 'SILog', 'log10'))

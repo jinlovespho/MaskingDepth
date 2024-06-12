@@ -123,9 +123,6 @@ if __name__ == "__main__":
                 # val forward pass
                 total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
                 
-                # if train_args.training_loss == 'selfsupervised_img_recon':
-                #     compute_depth_losses(inputs, model_outs, losses, EVAL)
-                
                 eval_loss += total_loss
                 
                 gt_depth = inputs['depth_gt']

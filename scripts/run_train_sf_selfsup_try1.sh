@@ -39,7 +39,7 @@ SAVE_ARGS="
 "
 
 LOGGING_ARGS="
-    --log_tool wandb
+    --log_tool wandba
     --wandb_proj_name 20240612_MultiFrame_Depth
     --wandb_exp_name pho_server8_gpu1_kitti_bs16_sf_selfsup_try1_eigenzhou
     --log_path /home/cvlab08/projects/data/jinlovespho/log/mfdepth
