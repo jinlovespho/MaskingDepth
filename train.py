@@ -66,39 +66,39 @@ if __name__ == "__main__":
     step = 0
     for epoch in range(train_args.num_epoch):
 
-        # # set train
-        # utils.model_mode(model,TRAIN)  
+        # set train
+        utils.model_mode(model,TRAIN)  
         
-        # # train loop
-        # tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_args.num_epoch}')
-        # for i, inputs in enumerate(tqdm_train): 
+        # train loop
+        tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_args.num_epoch}')
+        for i, inputs in enumerate(tqdm_train): 
             
-        #     # move tensors to cuda
-        #     for key, val in inputs.items():
-        #         if type(val) == torch.Tensor:   # not all inputs are tensors
-        #             inputs[key] = val.to(device)
+            # move tensors to cuda
+            for key, val in inputs.items():
+                if type(val) == torch.Tensor:   # not all inputs are tensors
+                    inputs[key] = val.to(device)
            
-        #     # train forward pass
-        #     total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
+            # train forward pass
+            total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
 
-        #     # terminal log
-        #     tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})
+            # terminal log
+            tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})
 
-        #     # backward pass 
-        #     optimizer.zero_grad()
-        #     total_loss.backward()
-        #     optimizer.step()
+            # backward pass 
+            optimizer.zero_grad()
+            total_loss.backward()
+            optimizer.step()
             
-        #     # wandb logging 
-        #     if train_args.log_tool == 'wandb':
-        #         wandb_dict = {"epoch":(epoch+1)}
-        #         wandb_dict.update(losses)
-        #         wandb.log(wandb_dict)
+            # wandb logging 
+            if train_args.log_tool == 'wandb':
+                wandb_dict = {"epoch":(epoch+1)}
+                wandb_dict.update(losses)
+                wandb.log(wandb_dict)
 
-        # # save model & optimzier (.pth)
-        # save_epoch_freq = int(train_args.epoch_save_freq)
-        # if epoch+1 % save_epoch_freq == save_epoch_freq:
-        #     utils.save_component(train_args.log_path, train_args.wandb_exp_name, epoch, model, optimizer)
+        # save model & optimzier (.pth)
+        save_epoch_freq = int(train_args.epoch_save_freq)
+        if epoch+1 % save_epoch_freq == save_epoch_freq:
+            utils.save_component(train_args.log_path, train_args.wandb_exp_name, epoch, model, optimizer)
 
         # validation
         with torch.no_grad():
