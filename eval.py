@@ -98,9 +98,7 @@ def eval_metric(pred_depths, gt_depths, train_args):
         gt_depth = gt_depths[i]
         pred_depth = pred_depths[i]
 
-        if train_args.training_loss == 'selfsupervised_img_recon':
-            pred_depth *= np.median(gt_depth) / np.median(pred_depth)
-            pred_depth = np.clip(pred_depth, train_args.min_depth, train_args.max_depth)
+       
                 
         min_depth = 0.001
         max_depth = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
@@ -130,6 +128,11 @@ def eval_metric(pred_depths, gt_depths, train_args):
 
         # 최종적으로 valid 한 영역만 계산 하는 mask
         valid_mask = np.logical_and(valid_mask, eval_mask)
+
+        if train_args.training_loss == 'selfsupervised_img_recon':
+            pred_depth *= np.median(gt_depth) / np.median(pred_depth)
+            pred_depth = np.clip(pred_depth, train_args.min_depth, train_args.max_depth)
+
         silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth[valid_mask], pred_depth[valid_mask])
     
     print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
