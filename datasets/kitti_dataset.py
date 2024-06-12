@@ -188,6 +188,7 @@ class KITTIDepthDataset(KITTIDataset):
             folder,
             "proj_depth/groundtruth/image_0{}".format(self.side_map[side]),
             f_str)
+        
         depth_gt = pil.open(depth_path)
         depth_gt = depth_gt.resize(self.full_res_shape, pil.NEAREST)
         depth_gt = np.array(depth_gt).astype(np.float32) / 256

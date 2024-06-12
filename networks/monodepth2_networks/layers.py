@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+
 def disp_to_depth(disp, min_depth, max_depth):
     """Convert network's sigmoid output into depth prediction
     The formula for this conversion is given in the 'additional considerations'
@@ -267,3 +268,38 @@ def compute_depth_errors(gt, pred):
     sq_rel = torch.mean((gt - pred) ** 2 / gt)
 
     return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
+
+
+def compute_depth_losses(inputs, outputs, losses, mode):
+        """Compute depth metrics, to allow monitoring during training
+
+        This isn't particularly accurate as it averages over the entire batch,
+        so is only used to give an indication of validation performance
+        """
+        
+        depth_metric_names = [
+            "de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
+        
+        depth_pred = outputs[("pred_depth", 0, 0)]
+        depth_pred = torch.clamp(F.interpolate(
+            depth_pred, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
+        depth_pred = depth_pred.detach()
+
+        depth_gt = inputs["depth_gt"]
+        mask = depth_gt > 0
+
+        # garg/eigen crop
+        crop_mask = torch.zeros_like(mask)
+        crop_mask[:, :, 153:371, 44:1197] = 1
+        mask = mask * crop_mask
+
+        depth_gt = depth_gt[mask]
+        depth_pred = depth_pred[mask]
+        depth_pred *= torch.median(depth_gt) / torch.median(depth_pred)
+
+        depth_pred = torch.clamp(depth_pred, min=1e-3, max=80)
+
+        depth_errors = compute_depth_errors(depth_gt, depth_pred)
+
+        for i, metric in enumerate(depth_metric_names):
+            losses[metric] = np.array(depth_errors[i].cpu())

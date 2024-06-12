@@ -21,7 +21,7 @@ def evaluate_metric(train_cfg, pred_depth, inputs):
     return metric
 
 def eval_kitti(pred_depth, inputs):
-    depth_pred = torch.clamp(F.interpolate(pred_depth, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
+    pred_depth = torch.clamp(F.interpolate(pred_depth, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
     depth_gt = inputs["depth_gt"]
     mask = depth_gt > 0
     crop_mask = torch.zeros_like(mask)
@@ -29,14 +29,14 @@ def eval_kitti(pred_depth, inputs):
     mask = mask * crop_mask
 
     depth_gt = depth_gt[mask]
-    depth_pred = depth_pred[mask]
+    pred_depth = pred_depth[mask]
 
-    depth_pred[depth_pred < 1e-03] = 1e-03
-    depth_pred[depth_pred > 80] = 80
+    pred_depth[pred_depth < 1e-03] = 1e-03
+    pred_depth[pred_depth > 80] = 80
 
-    depth_pred *= torch.median(depth_gt) / torch.median(depth_pred)
-    depth_pred = torch.clamp(depth_pred, min=1e-03, max=80)
-    depth_errors = [*utils.compute_depth_errors(depth_gt, depth_pred)]
+    pred_depth *= torch.median(depth_gt) / torch.median(pred_depth)
+    pred_depth = torch.clamp(pred_depth, min=1e-03, max=80)
+    depth_errors = [*utils.compute_depth_errors(depth_gt, pred_depth)]
 
     return depth_errors
 
@@ -57,15 +57,15 @@ def eval_nyu(pred_depth, inputs):
 
 def eval_virtual_kitti(pred_depth, inputs):
     pred_depth = utils.disp_to_depth(pred_depth, 1e-3, 80)[-1]
-    depth_pred = torch.clamp(F.interpolate(pred_depth, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
+    pred_depth = torch.clamp(F.interpolate(pred_depth, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
     depth_gt = inputs["depth_gt"]
     
-    depth_pred[depth_pred < 1e-3]  = 1e-3
-    depth_pred[depth_pred > 80]    = 80
+    pred_depth[pred_depth < 1e-3]  = 1e-3
+    pred_depth[pred_depth > 80]    = 80
 
-    depth_pred *= torch.median(depth_gt) / torch.median(depth_pred)
-    depth_pred = torch.clamp(depth_pred, min=1e-3, max=80)
-    depth_errors = [*utils.compute_depth_errors(depth_gt, depth_pred)]
+    pred_depth *= torch.median(depth_gt) / torch.median(pred_depth)
+    pred_depth = torch.clamp(pred_depth, min=1e-3, max=80)
+    depth_errors = [*utils.compute_depth_errors(depth_gt, pred_depth)]
     return depth_errors
 
 def get_eval_dict(errors):
@@ -76,7 +76,7 @@ def get_eval_dict(errors):
         error_dict[error_name] = error_value.item()
     return error_dict
 
-def eval_metric(pred_depths, gt_depths, data):
+def eval_metric(pred_depths, gt_depths, train_args):
     
     # pred_depths [ (375,1242) . . . ]
     # gt_depths   [ (375,1242) . . . ]
@@ -94,11 +94,16 @@ def eval_metric(pred_depths, gt_depths, data):
     d3 = np.zeros(num_samples, np.float32)
     
     for i in range(num_samples):
-
+        
         gt_depth = gt_depths[i]
         pred_depth = pred_depths[i]
+
+        if train_args.training_loss == 'selfsupervised_img_recon':
+            pred_depth *= np.median(gt_depth) / np.median(pred_depth)
+            pred_depth = np.clip(pred_depth, train_args.min_depth, train_args.max_depth)
+                
         min_depth = 0.001
-        max_depth = (10.0  if data.dataset == 'nyu' else 80.0)  # 80
+        max_depth = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
 
         # clamp values of pred_depths to min_depth and max_depth
         # predicted depth value 가 [min_depth, max_depth] 범위를 갖도록 조정
@@ -114,7 +119,7 @@ def eval_metric(pred_depths, gt_depths, data):
         gt_height, gt_width = gt_depth.shape
         eval_mask = np.zeros(valid_mask.shape)  # (375,1242) filled with zeros
 
-        if data.dataset == 'nyu':
+        if train_args.dataset == 'nyu':
             eval_mask[45:471, 41:601] = 1
         else:
             # eval_mask[153:371, 44:1197]=255
@@ -304,12 +309,12 @@ def visualize(inputs, pred_depth, model_outs, train_args, sample_num=4):
             # curr_img from prev_img 
             vis_curr_from_prev = vis_curr_from_prev[i]
             vis_curr_from_prev *= 255
-            vis1.append(wandb.Image(vis_curr_from_prev, caption="Curr from Prev"))
+            vis2.append(wandb.Image(vis_curr_from_prev, caption="Curr from Prev"))
             
             # curr_img from future_img
             vis_curr_from_fut = vis_curr_from_fut[i]
             vis_curr_from_fut *= 255
-            vis1.append(wandb.Image(vis_curr_from_fut, caption="Curr from Fut"))
+            vis2.append(wandb.Image(vis_curr_from_fut, caption="Curr from Fut"))
             
             
         wandb_eval_dict['vis1'] = vis1

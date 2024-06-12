@@ -12,6 +12,7 @@ from eval import visualize, eval_metric, get_eval_dict
 from torchvision.utils import save_image
 
 from args_train import get_train_args
+from networks.monodepth2_networks import compute_depth_losses
 
 TRAIN = 0
 EVAL  = 1
@@ -65,39 +66,39 @@ if __name__ == "__main__":
     step = 0
     for epoch in range(train_args.num_epoch):
 
-        # set train
-        utils.model_mode(model,TRAIN)  
+        # # set train
+        # utils.model_mode(model,TRAIN)  
         
-        # train loop
-        tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_args.num_epoch}')
-        for i, inputs in enumerate(tqdm_train): 
+        # # train loop
+        # tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_args.num_epoch}')
+        # for i, inputs in enumerate(tqdm_train): 
             
-            # move tensors to cuda
-            for key, val in inputs.items():
-                if type(val) == torch.Tensor:   # not all inputs are tensors
-                    inputs[key] = val.to(device)
+        #     # move tensors to cuda
+        #     for key, val in inputs.items():
+        #         if type(val) == torch.Tensor:   # not all inputs are tensors
+        #             inputs[key] = val.to(device)
            
-            # train forward pass
-            total_loss, losses = loss.compute_loss(inputs, model, train_args, TRAIN)
+        #     # train forward pass
+        #     total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
 
-            # terminal log
-            tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})
+        #     # terminal log
+        #     tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})
 
-            # backward pass 
-            optimizer.zero_grad()
-            total_loss.backward()
-            optimizer.step()
+        #     # backward pass 
+        #     optimizer.zero_grad()
+        #     total_loss.backward()
+        #     optimizer.step()
             
-            # wandb logging 
-            if train_args.log_tool == 'wandb':
-                wandb_dict = {"epoch":(epoch+1)}
-                wandb_dict.update(losses)
-                wandb.log(wandb_dict)
+        #     # wandb logging 
+        #     if train_args.log_tool == 'wandb':
+        #         wandb_dict = {"epoch":(epoch+1)}
+        #         wandb_dict.update(losses)
+        #         wandb.log(wandb_dict)
 
-        # save model & optimzier (.pth)
-        save_epoch_freq = int(train_args.epoch_save_freq)
-        if epoch+1 % save_epoch_freq == save_epoch_freq:
-            utils.save_component(train_args.log_path, train_args.wandb_exp_name, epoch, model, optimizer)
+        # # save model & optimzier (.pth)
+        # save_epoch_freq = int(train_args.epoch_save_freq)
+        # if epoch+1 % save_epoch_freq == save_epoch_freq:
+        #     utils.save_component(train_args.log_path, train_args.wandb_exp_name, epoch, model, optimizer)
 
         # validation
         with torch.no_grad():
@@ -122,14 +123,15 @@ if __name__ == "__main__":
                 # val forward pass
                 total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
                 
-                # total_loss, losses, pred_depth_orig, recon_img_ca_map, recon_img_ca_out = loss.compute_loss(inputs, model, train_args, EVAL)
- 
+                # if train_args.training_loss == 'selfsupervised_img_recon':
+                #     compute_depth_losses(inputs, model_outs, losses, EVAL)
+                
                 eval_loss += total_loss
                 
                 gt_depth = inputs['depth_gt']
-                pred_depths.extend(pred_depth_orig.squeeze(1).cpu().numpy())
-                gt_depths.extend(gt_depth.squeeze(1).cpu().numpy())
-            
+                pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
+                gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
+             
             eval_error = eval_metric(pred_depths, gt_depths, train_args)  
             error_dict = get_eval_dict(eval_error)
             error_dict["val_loss"] = eval_loss / len(val_loader)                

@@ -72,7 +72,7 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
     
     # returns
     if mode == TRAIN:
-        return total_loss, losses
+        return total_loss, losses, model_outs
     else:
         return total_loss, losses, pred_depth_orig, model_outs
 
@@ -83,7 +83,7 @@ def model_forward(inputs, model, train_args, mode):
 
 
 def pose_forward(inputs, model):
-
+    
     # ForkedPdb().set_trace()
     pose_inputs = [model["pose_encoder"](torch.cat( [inputs['color',-1,0], inputs['color',0,0] ], 1))]
     fa,ft = model['pose_decoder'](pose_inputs)
@@ -115,7 +115,7 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
     device = model_outs['pred_disp',0].device
 
     color = inputs['color',0,0]
-    target = inputs['color_aug',0,0]
+    target = inputs['color',0,0]
 
     backproject_depth = utils.BackprojectDepth(train_args.batch_size, train_args.re_height, train_args.re_width)
     backproject_depth.to(device)
@@ -159,7 +159,6 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
 
         reprojection_losses = torch.cat(reprojection_losses, 1)
         reprojection_loss = reprojection_losses
-
 
         # ## auto masking
         identity_reprojection_losses = []

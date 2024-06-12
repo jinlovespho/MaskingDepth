@@ -151,6 +151,7 @@ def model_load(train_args, device):
                                                                             num_input_features=1,
                                                                             num_frames_to_predict_for=2)
 
+    
     # JINLOVESPHO mf_baseline
     elif train_args.model_info == 'mf_baseline':
         
@@ -327,10 +328,7 @@ def model_load(train_args, device):
                                                 croco = (train_args.pretrained_weight == 'croco'),
                                                 )
         
-
-        
-        
-        
+ 
     else:
         pass
     

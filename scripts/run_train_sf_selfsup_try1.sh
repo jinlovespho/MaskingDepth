@@ -40,8 +40,8 @@ SAVE_ARGS="
 
 LOGGING_ARGS="
     --log_tool wandb
-    --wandb_proj_name 20240611_MultiFrame_Depth
-    --wandb_exp_name pho_server8_gpu3_kitti_bs16_sf_selfsup_try1_eigenzhou
+    --wandb_proj_name 20240612_MultiFrame_Depth
+    --wandb_exp_name pho_server8_gpu1_kitti_bs16_sf_selfsup_try1_eigenzhou
     --log_path /home/cvlab08/projects/data/jinlovespho/log/mfdepth
 "
 
@@ -50,7 +50,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=3   python ../train.py        \
+CUDA_VISIBLE_DEVICES=1   python ../train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \
