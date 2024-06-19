@@ -93,49 +93,38 @@ def eval_metric(pred_depths, gt_depths, train_args):
     d2 = np.zeros(num_samples, np.float32)
     d3 = np.zeros(num_samples, np.float32)
     
+    ratios=[]
+    
     for i in range(num_samples):
         # gt_depth and pred_depth are numpys
         
+        MIN_DEPTH = 0.001
+        MAX_DEPTH = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
+        
         gt_depth = gt_depths[i]
-        pred_depth = pred_depths[i]
-     
-        min_depth = 0.001
-        max_depth = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
-        
-        # clamp pred_depth values to min_depth~max_depth
-        pred_depth[pred_depth < min_depth] = min_depth
-        pred_depth[pred_depth > max_depth] = max_depth
-        pred_depth[np.isinf(pred_depth)] = max_depth
-        
-        gt_depth[np.isinf(gt_depth)] = 0
-        gt_depth[np.isnan(gt_depth)] = 0
-
-        valid_mask = np.logical_and(gt_depth > min_depth, gt_depth < max_depth)     # (375,1242) : true/false mask
-
         gt_height, gt_width = gt_depth.shape
-        eval_mask = np.zeros(valid_mask.shape)  # (375,1242) filled with zeros
-
-        if train_args.dataset == 'nyu':
-            eval_mask[45:471, 41:601] = 1
-        else:
-            # eval_mask[153:371, 44:1197]=255
-            # cv2.imwrite('../eval_mask_region.png', eval_mask)
-            
-            # kitti에서 eval 할 영역 지정
-            eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1   # eval_mask[153:371, 44:1197]
-
-        # final mask for calculating only on valid regions
-        valid_mask = np.logical_and(valid_mask, eval_mask)
         
-        valid_gt_depth = gt_depth[valid_mask]
-        valid_pred_depth = pred_depth[valid_mask]
+        pred_depth = pred_depths[i]
+         
+        mask = np.logical_and(gt_depth > MIN_DEPTH, gt_depth < MAX_DEPTH)
+        crop = np.array([0.40810811 * gt_height, 0.99189189 * gt_height,
+                            0.03594771 * gt_width,  0.96405229 * gt_width]).astype(np.int32)
+        crop_mask = np.zeros(mask.shape)
+        crop_mask[crop[0]:crop[1], crop[2]:crop[3]] = 1
+        mask = np.logical_and(mask, crop_mask)
         
-        if train_args.training_loss == 'selfsupervised_img_recon':
-            valid_pred_depth *= np.median(valid_gt_depth) / np.median(valid_pred_depth)
-            # pred_depth *= np.median(gt_depth) / np.median(pred_depth) 확실히 valid_pred_depth랑 차이가 있네
-
-        silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(valid_gt_depth, valid_pred_depth)
-    
+        pred_depth = pred_depth[mask]
+        gt_depth = gt_depth[mask]
+        
+        ratio = np.median(gt_depth) / np.median(pred_depth)
+        ratios.append(ratio)
+        pred_depth *= ratio
+        
+        pred_depth[pred_depth < MIN_DEPTH] = MIN_DEPTH
+        pred_depth[pred_depth > MAX_DEPTH] = MAX_DEPTH
+        
+        silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth, pred_depth)
+        
     print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
         'd1', 'd2', 'd3', 'AbsRel', 'SqRel', 'RMSE', 'RMSElog', 'SILog', 'log10'))
     print("{:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}".format(
@@ -143,6 +132,77 @@ def eval_metric(pred_depths, gt_depths, train_args):
         abs_rel.mean(), sq_rel.mean(), rms.mean(), log_rms.mean(), silog.mean(), log10.mean()))
 
     return abs_rel, sq_rel, rms, log_rms, d1, d2, d3
+
+
+# def eval_metric(pred_depths, gt_depths, train_args):
+    
+#     # pred_depths [ (375,1242) . . . ]
+#     # gt_depths   [ (375,1242) . . . ]
+    
+#     num_samples = len(pred_depths)
+
+#     silog = np.zeros(num_samples, np.float32)
+#     log10 = np.zeros(num_samples, np.float32)
+#     rms = np.zeros(num_samples, np.float32)
+#     log_rms = np.zeros(num_samples, np.float32)
+#     abs_rel = np.zeros(num_samples, np.float32)
+#     sq_rel = np.zeros(num_samples, np.float32)
+#     d1 = np.zeros(num_samples, np.float32)
+#     d2 = np.zeros(num_samples, np.float32)
+#     d3 = np.zeros(num_samples, np.float32)
+    
+#     for i in range(num_samples):
+#         # gt_depth and pred_depth are numpys
+        
+#         gt_depth = gt_depths[i]
+#         pred_depth = pred_depths[i]
+     
+#         min_depth = 0.001
+#         max_depth = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
+        
+#         # clamp pred_depth values to min_depth~max_depth
+#         pred_depth[pred_depth < min_depth] = min_depth
+#         pred_depth[pred_depth > max_depth] = max_depth
+#         pred_depth[np.isinf(pred_depth)] = max_depth
+        
+#         gt_depth[np.isinf(gt_depth)] = 0
+#         gt_depth[np.isnan(gt_depth)] = 0
+
+#         valid_mask = np.logical_and(gt_depth > min_depth, gt_depth < max_depth)     # (375,1242) : true/false mask
+
+#         gt_height, gt_width = gt_depth.shape
+#         eval_mask = np.zeros(valid_mask.shape)  # (375,1242) filled with zeros
+
+#         if train_args.dataset == 'nyu':
+#             eval_mask[45:471, 41:601] = 1
+#         else:
+#             # eval_mask[153:371, 44:1197]=255
+#             # cv2.imwrite('../eval_mask_region.png', eval_mask)
+            
+#             # kitti에서 eval 할 영역 지정
+#             eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height), int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1   # eval_mask[153:371, 44:1197]
+
+#         # final mask for calculating only on valid regions
+#         valid_mask = np.logical_and(valid_mask, eval_mask)
+        
+#         valid_gt_depth = gt_depth[valid_mask]
+#         valid_pred_depth = pred_depth[valid_mask]
+        
+#         if train_args.training_loss == 'selfsupervised_img_recon':
+#             valid_pred_depth *= np.median(valid_gt_depth) / np.median(valid_pred_depth)
+#             # pred_depth *= np.median(gt_depth) / np.median(pred_depth) 확실히 valid_pred_depth랑 차이가 있네
+
+#         silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(valid_gt_depth, valid_pred_depth)
+    
+#     print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
+#         'd1', 'd2', 'd3', 'AbsRel', 'SqRel', 'RMSE', 'RMSElog', 'SILog', 'log10'))
+#     print("{:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}".format(
+#         d1.mean(), d2.mean(), d3.mean(),
+#         abs_rel.mean(), sq_rel.mean(), rms.mean(), log_rms.mean(), silog.mean(), log10.mean()))
+
+#     return abs_rel, sq_rel, rms, log_rms, d1, d2, d3
+
+
 
 
 def eval_metric_bbox(pred_depths, gt_depths, data, bbox_mask_depths):
@@ -163,6 +223,7 @@ def eval_metric_bbox(pred_depths, gt_depths, data, bbox_mask_depths):
     d3 = np.zeros(num_samples, np.float32)
     
     for i in range(num_samples):
+        
 
         gt_depth = gt_depths[i]
         pred_depth = pred_depths[i]

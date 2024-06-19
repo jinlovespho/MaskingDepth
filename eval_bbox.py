@@ -157,7 +157,6 @@ def draw_boxes(image_tensor, boxes, color=(0, 255, 0), thickness=1):
     return images,masks    
 
 
-
 if __name__ == "__main__":
     with open(args.conf, 'r') as f:
         conf =  yaml.load(f, Loader=yaml.FullLoader)

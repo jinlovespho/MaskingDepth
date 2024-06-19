@@ -6,12 +6,31 @@ from .vit import Transformer
 from .dpt_utils import *
 import random
 import numpy as np
+from einops import rearrange 
 
 from .croco_blocks import *
 from .fuse_cross_attn import *
+from .conv4d import Conv4d_Module
+from .conv4d_coponerf import Encoder4D
+
+import sys
+import pdb
+
+class ForkedPdb(pdb.Pdb):
+    """
+    PDB Subclass for debugging multi-processed code
+    Suggested in: https://stackoverflow.com/questions/4716533/how-to-attach-debugger-to-a-python-subproccess
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
 
 
-class MF_Depth_Baseline(nn.Module):
+class MF_Depth_Try9(nn.Module):
     def __init__(
         self,
         *,
@@ -19,16 +38,16 @@ class MF_Depth_Baseline(nn.Module):
         max_depth,
         features=[96, 192, 384, 768],
         hooks=[2, 5, 8, 11],
-        vit_features=768,
+        vit_features,
         use_readout="ignore",
         start_index=1,
         masking_ratio=0.5,
         cross_attn_depth = 8,
-        croco = None
+        croco = None,
     ):
         super().__init__()
-        
-        # JINLOVESPHO
+    
+        # device
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
         # ViT
@@ -51,26 +70,25 @@ class MF_Depth_Baseline(nn.Module):
         self.act_postprocess1 = nn.Sequential(
             # readout_oper[0],
             Transpose(1, 2),
-            nn.Conv2d( in_channels=vit_features, out_channels=features[0], kernel_size=1, stride=1, padding=0) ,
-            nn.ConvTranspose2d( in_channels=features[0], out_channels=features[0], kernel_size=4, stride=4, padding=0, bias=True, dilation=1, groups=1),
-        )
+            nn.Conv2d(in_channels=vit_features, out_channels=features[0], kernel_size=1, stride=1, padding=0),
+            nn.ConvTranspose2d(in_channels=features[0], out_channels=features[0], kernel_size=4, stride=4, padding=0, bias=True, dilation=1, groups=1), )
+        
         self.act_postprocess2 = nn.Sequential(
             # readout_oper[1],
             Transpose(1, 2),
-            nn.Conv2d( in_channels=vit_features, out_channels=features[1], kernel_size=1, stride=1, padding=0),
-            nn.ConvTranspose2d( in_channels=features[1], out_channels=features[1], kernel_size=2, stride=2, padding=0, bias=True, dilation=1, groups=1),
-        )
+            nn.Conv2d(in_channels=vit_features,out_channels=features[1],kernel_size=1,stride=1,padding=0,),
+            nn.ConvTranspose2d(in_channels=features[1],out_channels=features[1],kernel_size=2,stride=2,padding=0,bias=True,dilation=1,groups=1,),)
+        
         self.act_postprocess3 = nn.Sequential(
             # readout_oper[2],
             Transpose(1, 2),
-            nn.Conv2d( in_channels=vit_features, out_channels=features[2], kernel_size=1, stride=1, padding=0),
-        )
+            nn.Conv2d(in_channels=vit_features,out_channels=features[2],kernel_size=1,stride=1,padding=0,),)
+        
         self.act_postprocess4 = nn.Sequential(
             # readout_oper[3],
             Transpose(1, 2),
-            nn.Conv2d( in_channels=vit_features, out_channels=features[3], kernel_size=1, stride=1, padding=0),
-            nn.Conv2d( in_channels=features[3], out_channels=features[3], kernel_size=3, stride=2, padding=1),
-        )
+            nn.Conv2d(in_channels=vit_features,out_channels=features[3],kernel_size=1,stride=1,padding=0,),
+            nn.Conv2d(in_channels=features[3],out_channels=features[3],kernel_size=3,stride=2,padding=1,),)
         
         self.unflatten = nn.Sequential(
             nn.Unflatten(2, torch.Size([self.num_pH, self.num_pW])))
@@ -89,9 +107,8 @@ class MF_Depth_Baseline(nn.Module):
             nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
             nn.Sigmoid(),
             nn.Identity(),
-        )
-
-
+        ) 
+        
         # JINLOVESPHO
         self.masking_ratio=masking_ratio
         
@@ -105,7 +122,7 @@ class MF_Depth_Baseline(nn.Module):
             self.rope = RoPE2D(freq=100)
         else:
             self.rope = None
-
+        # self.mask_pe_table = nn.Embedding(encoder.num_patches, vit_features)
         self.decoder_pose_embed = nn.Parameter(torch.from_numpy(get_2d_sincos_pos_embed(vit_features, self.target_size[0]//16,self.target_size[1]//16, 0)).float(), requires_grad=False)
         
         self.cross_attn_module1 = CrossAttention_Module(ca_dim=vit_features, ca_num_heads=self.encoder.heads, ca_depth=cross_attn_depth, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,
@@ -118,7 +135,92 @@ class MF_Depth_Baseline(nn.Module):
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, norm_mem=True, rope=self.rope)
         
         self.position_getter = PositionGetter()
-                
+        
+        # conv4d 
+        in_c = 4*self.encoder.heads
+        
+        self.depth_conv4d_enc = nn.ModuleList([
+            Encoder4D(  corr_levels=(in_c, in_c*4, in_c),
+                        kernel_size=( (3, 3, 3, 3), (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        group=(1, 1),
+            ),
+            
+            Encoder4D(  corr_levels=(in_c, in_c*4, in_c),
+                        kernel_size=( (3, 3, 3, 3), (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        group=(1, 1),
+            ),
+            
+            Encoder4D(  corr_levels=(in_c, in_c*4, in_c),
+                        kernel_size=( (3, 3, 3, 3), (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        group=(1, 1),
+            ),
+            
+            Encoder4D(  corr_levels=(in_c, in_c*4, in_c),
+                        kernel_size=( (3, 3, 3, 3), (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), (1, 1, 1, 1), ),
+                        group=(1, 1),
+            ),  
+            
+        ])
+        
+        self.pose_conv4d_enc = nn.ModuleList([
+            Encoder4D(  corr_levels=(in_c, in_c),
+                        kernel_size=( (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), ),
+                        group=(1, ),
+            ),
+            
+            Encoder4D(  corr_levels=(in_c, in_c),
+                        kernel_size=( (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), ),
+                        group=(1, ),
+            ),
+            
+            Encoder4D(  corr_levels=(in_c, in_c),
+                        kernel_size=( (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), ),
+                        group=(1, ),
+            ),
+            
+            Encoder4D(  corr_levels=(in_c, in_c),
+                        kernel_size=( (3, 3, 3, 3), ),
+                        stride=( (1, 1, 1, 1), ),
+                        padding=( (1, 1, 1, 1), ),
+                        group=(1, ),
+            ),
+            
+        ])
+        
+        
+        self.depth_ln0 = nn.LayerNorm(23040)
+        self.depth_ln1 = nn.LayerNorm(23040)
+        self.depth_ln2 = nn.LayerNorm(23040)
+        self.depth_ln3 = nn.LayerNorm(23040)
+        
+        
+        # self.depth_linear0 = nn.Sequential( nn.Linear(23040, 2048), nn.Linear(2048, 768) )
+        # self.depth_linear1 = nn.Sequential( nn.Linear(23040, 2048), nn.Linear(2048, 768) )
+        # self.depth_linear2 = nn.Sequential( nn.Linear(23040, 2048), nn.Linear(2048, 768) )
+        # self.depth_linear3 = nn.Sequential( nn.Linear(23040, 2048), nn.Linear(2048, 768) )
+        
+        self.depth_linear0 = nn.Linear(23040, vit_features)
+        self.depth_linear1 = nn.Linear(23040, vit_features)
+        self.depth_linear2 = nn.Linear(23040, vit_features)
+        self.depth_linear3 = nn.Linear(23040, vit_features)
+        
+        self.pose_linear0 = nn.Linear(23040, )
+        
+        
     def forward(self, inputs, train_args, mode):
         
         outputs={}
@@ -131,9 +233,11 @@ class MF_Depth_Baseline(nn.Module):
         else:
             img_frames.append(inputs['color_aug',  0, 0])   
             img_frames.append(inputs['color_aug', -1, 0])   
-            # img_frames.append(inputs['color_aug',  1, 0])
+            # img_frames.append(inputs['color_aug',  1, 0])   
 
-        tokenized_frames = []   
+
+        # tokenize input image frames(t,t-1, . . ) and add positional embeddings
+        tokenized_frames = []
         poses = []
         for i, frame in enumerate(img_frames):              # frame: (b,3,192,640)   
             tmp =self.encoder.to_patch_embedding(frame)     # tmp: (b,480,768), where patchsize=16, (192/16)*(640/16)=480 총 token(patch)개수 
@@ -141,17 +245,19 @@ class MF_Depth_Baseline(nn.Module):
                 tmp += self.encoder.pos_emb_lst[i][:,1:,:]
             tmp = self.encoder.dropout(tmp)
             tokenized_frames.append(tmp)
-            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16, frame.device))
+
+            # poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16, frame.device))
+            poses.append(self.position_getter(frame.shape[0],frame.shape[2]//16,frame.shape[3]//16))
         
         # batch_size, length, dim, device
-        b,n,dim = tokenized_frames[0].shape     # (b,480,768)
-        device = tokenized_frames[0].device.type  
+        b,n,dim = tokenized_frames[0].shape     # (8,480,768)
+        device = tokenized_frames[0].device.type    # 이게 되나 ?
         
         # number of patches to mask
         num_p_msk = int(self.masking_ratio * n ) if mode == 0 else 0    # validation(mode=1) 이면 num_p_mask=0 으로 만들어서 unmask !
         
         # random masking index generation
-        idx_rnd = torch.rand(b,n, device=device).argsort()
+        idx_rnd = torch.rand(b,n).argsort()
         idx_msk, idx_umsk = idx_rnd[:,:num_p_msk], idx_rnd[:,num_p_msk:]
         idx_msk = idx_msk.sort().values
         idx_umsk = idx_umsk.sort().values
@@ -160,29 +266,34 @@ class MF_Depth_Baseline(nn.Module):
         # unmasked tokens
         frame0_unmsk_tkn = tokenized_frames[0][idx_bs, idx_umsk]
         poses0_unmsk_tkn = poses[0][idx_bs, idx_umsk]
+        
+        # manually put cpu variables to gpu 
+        poses0_unmsk_tkn = poses0_unmsk_tkn.to(self.device)
+        poses[0] = poses[0].to(self.device)
+        poses[1] = poses[1].to(self.device)
 
+        # masked tokens
+        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)   # einops 의 repeat 은 메모리 공유. 즉 다 바뀌어 
+        msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk) 
+        msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk) 
+        msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk) 
+        
         # t frame encoder
-        glob1 = self.encoder.transformer(frame0_unmsk_tkn,poses0_unmsk_tkn)     # (b, num_umsk_tkn, 768)     
-        glob1_layer_1 = self.encoder.transformer.features[0]                    
+        glob1 = self.encoder.transformer(frame0_unmsk_tkn, poses0_unmsk_tkn)     # (8,192,768)
+        glob1_layer_1 = self.encoder.transformer.features[0]                    # (8,192,768)
         glob1_layer_2 = self.encoder.transformer.features[1]      
         glob1_layer_3 = self.encoder.transformer.features[2]      
-        glob1_layer_4 = self.encoder.transformer.features[3]      
-                    
+        glob1_layer_4 = self.encoder.transformer.features[3]    # glob1 과 동일          
+        
         # t-1 frame encoder
         glob2 = self.encoder.transformer(tokenized_frames[1],poses[1])          # (8,480,768)
         glob2_layer_1 = self.encoder.transformer.features[0]                    # (8,480,768)
         glob2_layer_2 = self.encoder.transformer.features[1]      
         glob2_layer_3 = self.encoder.transformer.features[2]      
-        glob2_layer_4 = self.encoder.transformer.features[3]    
-    
-        # masked tokens
-        msk_tkns1 = repeat(self.msk_tkn1, 'd -> b n d', b=b, n=num_p_msk)   # einops 의 repeat 은 메모리 공유. 즉 다 바뀌어 
-        msk_tkns2 = repeat(self.msk_tkn2, 'd -> b n d', b=b, n=num_p_msk)
-        msk_tkns3 = repeat(self.msk_tkn3, 'd -> b n d', b=b, n=num_p_msk)
-        msk_tkns4 = repeat(self.msk_tkn4, 'd -> b n d', b=b, n=num_p_msk)  
+        glob2_layer_4 = self.encoder.transformer.features[3]      
 
         # encoder output1 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn1 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn1[idx_bs, idx_umsk] = glob1_layer_1
         frame0_msk_umsk_tkn1[idx_bs, idx_msk] = msk_tkns1
 
@@ -191,7 +302,7 @@ class MF_Depth_Baseline(nn.Module):
             glob2_layer_1 = glob2_layer_1 + self.decoder_pose_embed
         
         # encoder output2 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn2 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn2[idx_bs, idx_umsk] = glob1_layer_2
         frame0_msk_umsk_tkn2[idx_bs, idx_msk] = msk_tkns2
 
@@ -200,7 +311,7 @@ class MF_Depth_Baseline(nn.Module):
             glob2_layer_2 = glob2_layer_2 + self.decoder_pose_embed
         
         # encoder output3 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn3 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn3[idx_bs, idx_umsk] = glob1_layer_3 
         frame0_msk_umsk_tkn3[idx_bs, idx_msk] = msk_tkns3
 
@@ -209,25 +320,101 @@ class MF_Depth_Baseline(nn.Module):
             glob2_layer_3 = glob2_layer_3 + self.decoder_pose_embed
 
         # encoder output4 에 msk tkn 을 concat 하는 과정
-        frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=device)            # (8,480,768)
+        frame0_msk_umsk_tkn4 = torch.zeros(b, n, dim, device=self.device)            # (8,480,768)
         frame0_msk_umsk_tkn4[idx_bs, idx_umsk] = glob1_layer_4
         frame0_msk_umsk_tkn4[idx_bs, idx_msk] = msk_tkns4
 
         if not self.encoder.croco:
             frame0_msk_umsk_tkn4 = frame0_msk_umsk_tkn4 + self.decoder_pose_embed
             glob2_layer_4 = glob2_layer_4 + self.decoder_pose_embed
-             
-        # cross attention output
-        cross_attn_out1, c_attn_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1])      # (b,480,768)
-        cross_attn_out2, c_attn_map2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1])
-        cross_attn_out3, c_attn_map3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
-        cross_attn_out4, c_attn_map4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
         
-        # JINLOVESPHO
-        layer_1 = cross_attn_out1
-        layer_2 = cross_attn_out2
-        layer_3 = cross_attn_out3
-        layer_4 = cross_attn_out4
+        
+        # cross attention output and attention map
+        ca_out1, ca_map1 = self.cross_attn_module1(frame0_msk_umsk_tkn1, glob2_layer_1, poses[0], poses[1]) # (b,480,768)
+        ca_out2, ca_map2 = self.cross_attn_module2(frame0_msk_umsk_tkn2, glob2_layer_2, poses[0], poses[1]) # (b,n,d)    
+        ca_out3, ca_map3 = self.cross_attn_module3(frame0_msk_umsk_tkn3, glob2_layer_3, poses[0], poses[1])
+        ca_out4, ca_map4 = self.cross_attn_module4(frame0_msk_umsk_tkn4, glob2_layer_4, poses[0], poses[1])
+
+        # 1. avg ca_maps
+        avg_ca_map1 = torch.stack(ca_map1).mean(dim=0)
+        avg_ca_map2 = torch.stack(ca_map2).mean(dim=0)
+        avg_ca_map3 = torch.stack(ca_map3).mean(dim=0)
+        avg_ca_map4 = torch.stack(ca_map4).mean(dim=0)
+        
+        
+        # 2. concat four ca maps in channel dim
+        cat_ca_maps1 = torch.cat(ca_map1, dim=1)    # (b, 4*head, n,n )  (b,48,480,480)
+        cat_ca_maps2 = torch.cat(ca_map2, dim=1)
+        cat_ca_maps3 = torch.cat(ca_map3, dim=1)
+        cat_ca_maps4 = torch.cat(ca_map4, dim=1)
+
+        # reshape for conv4d input
+        cat_ca_maps1 = cat_ca_maps1.view(b, 4*self.encoder.heads, self.num_pH, self.num_pW, self.num_pH, self.num_pW )  # (b,4*head, h,w,h,w)
+        cat_ca_maps2 = cat_ca_maps2.view(b, 4*self.encoder.heads, self.num_pH, self.num_pW, self.num_pH, self.num_pW )  # (8,48, 12,40,12,40)
+        cat_ca_maps3 = cat_ca_maps3.view(b, 4*self.encoder.heads, self.num_pH, self.num_pW, self.num_pH, self.num_pW )
+        cat_ca_maps4 = cat_ca_maps4.view(b, 4*self.encoder.heads, self.num_pH, self.num_pW, self.num_pH, self.num_pW )
+        # avg_cmap1 = rearrange(avg_cmap1, 'b head (h1 w1) (h2 w2) -> b head h1 w1 h2 w2', h1=self.num_pH, h2=self.num_pH)
+        
+        # depth refined ca map
+        depth_ca_map0 = self.depth_conv4d_enc[0](cat_ca_maps1)  # (b,48, 12,40, 12,40)
+        depth_ca_map1 = self.depth_conv4d_enc[1](cat_ca_maps2)
+        depth_ca_map2 = self.depth_conv4d_enc[2](cat_ca_maps3)
+        depth_ca_map3 = self.depth_conv4d_enc[3](cat_ca_maps4)
+                
+        depth_ca_map0 = rearrange(depth_ca_map0, 'b c h1 w1 h2 w2 -> b (h1 w1) (h2 w2 c)', h1=12, h2=12)    # (b, 480, 23040)
+        depth_ca_map1 = rearrange(depth_ca_map1, 'b c h1 w1 h2 w2 -> b (h1 w1) (h2 w2 c)', h1=12, h2=12)
+        depth_ca_map2 = rearrange(depth_ca_map2, 'b c h1 w1 h2 w2 -> b (h1 w1) (h2 w2 c)', h1=12, h2=12)
+        depth_ca_map3 = rearrange(depth_ca_map3, 'b c h1 w1 h2 w2 -> b (h1 w1) (h2 w2 c)', h1=12, h2=12)
+        
+        # layer norm
+        depth_ca_map0 = self.depth_ln0(depth_ca_map0)
+        depth_ca_map1 = self.depth_ln1(depth_ca_map1)
+        depth_ca_map2 = self.depth_ln2(depth_ca_map2)
+        depth_ca_map3 = self.depth_ln3(depth_ca_map3)
+        
+        # linear
+        depth_feat0 = self.depth_linear0(depth_ca_map0) # (b, 480, 768)
+        depth_feat1 = self.depth_linear1(depth_ca_map1)
+        depth_feat2 = self.depth_linear2(depth_ca_map2)
+        depth_feat3 = self.depth_linear3(depth_ca_map3)
+        
+        # pose refined ca map
+        pose_ca_map0 = self.pose_conv4d_enc[0](cat_ca_maps1)    # (b,48, 12,40,12,40)
+        pose_ca_map1 = self.pose_conv4d_enc[1](cat_ca_maps2)
+        pose_ca_map2 = self.pose_conv4d_enc[2](cat_ca_maps3)
+        pose_ca_map3 = self.pose_conv4d_enc[3](cat_ca_maps4)
+        
+        pose_ca_map0 = rearrange(pose_ca_map0, 'b c h1 w1 h2 w2 -> b (c h2 w2) h1 w1')  # (b,23040,12,40)
+        pose_ca_map1 = rearrange(pose_ca_map1, 'b c h1 w1 h2 w2 -> b (c h2 w2) h1 w1')
+        pose_ca_map2 = rearrange(pose_ca_map2, 'b c h1 w1 h2 w2 -> b (c h2 w2) h1 w1')
+        pose_ca_map3 = rearrange(pose_ca_map3, 'b c h1 w1 h2 w2 -> b (c h2 w2) h1 w1')
+        
+        pose_ca_map0 = pose_ca_map0.mean(dim=(2,3)) # (b,23040)
+        pose_ca_map0 = pose_ca_map0.mean(dim=(2,3))
+        pose_ca_map0 = pose_ca_map0.mean(dim=(2,3))
+        pose_ca_map0 = pose_ca_map0.mean(dim=(2,3))
+        
+        
+        breakpoint()
+        
+        pose_feat = torch.cat([pose_ca_map0, pose_ca_map1, pose_ca_map2, pose_ca_map3], dim=1).mean(dim=(2,3,4,5))  # (b,192)
+        
+        # layer_1 = depth_feat0
+        # layer_2 = depth_feat1
+        # layer_3 = depth_feat2
+        # layer_4 = depth_feat3
+    
+        # layer_1 = depth_feat0.detach()
+        # layer_2 = depth_feat1.detach()
+        # layer_3 = depth_feat2.detach() 
+        # layer_4 = depth_feat3.detach() 
+            
+        layer_1 = c_attn_out1 + depth_feat0.detach()
+        layer_2 = c_attn_out2 + depth_feat1.detach()
+        layer_3 = c_attn_out3 + depth_feat2.detach()
+        layer_4 = c_attn_out4 + depth_feat3.detach()
+        
+        # ================ decoder input preparation =====================
         
         layer_1 = self.act_postprocess1[0](layer_1)     # 모두 index[0] 이므로, Tranpose() 통과 의미.
         layer_2 = self.act_postprocess2[0](layer_2)     # 즉 모두(B, 480, 768) -> Transpose -> (B, 768, 480) 된다.
@@ -238,6 +425,13 @@ class MF_Depth_Baseline(nn.Module):
         # transformer encoder transposed outputs (intermediate ouputs 포함 O)
         features= [layer_1, layer_2, layer_3, layer_4]
 
+        # 이제 transformer의 output은 2D 꼴이다. (batch 생략 경우)
+        # transformer output shape = (B, 480, 768)
+        # 이것을 "CNN" decoder에 넣기 위해 3D 로 reshape 해주어야 
+        # 각 patch를 하나의 pixel로 취급하면
+        # (480,768) = (N,D) -> (C,H,W) 꼴로 만들어야 
+        # (480,768) -> (768, H, W) -> (768, height patch 개수, width patch 개수) -> (768, 192/16, 640/16) -> (768, 12, 40) 이 되는 것 ! 
+        
         # transformer 2d (b,hw,d)꼴을 -> img 3d (b,c,h,w) 꼴로 만들어줌
         if layer_1.ndim == 3:
             layer_1 = self.unflatten(layer_1)       # (B,768,12,40) 
@@ -268,13 +462,14 @@ class MF_Depth_Baseline(nn.Module):
         path_2 = self.scratch.refinenet2(path_3, layer_2_rn)
         path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
 
-        pred_depth = self.scratch.output_conv(path_1) * self.max_depth  # (b,1,192,640)
+        pred_depth = self.scratch.output_conv(path_1) * self.max_depth
         
         # pred_depth = (B,1,192,640)
         # features = len() = 4 = transformer 의 중간 layer outputs, (B,N,D)
         # fusion_features len() = 4 = 위 transformer 의 중간 layer outputs 를 CNN refinenet에 넣기 위해 img shape으로 여러 scale로 reshape한 (B,C,H,W) 꼴 
-        outputs['pred_depth'] = pred_depth
         
+        outputs['pred_depth'] = pred_depth
+           
         return outputs
     
     
@@ -385,16 +580,34 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
 
+# class PositionGetter(object):
+#     """ return positions of patches """
+
+#     def __init__(self):
+#         self.cache_positions = {}
+        
+#     def __call__(self, b, h, w, device):
+#         # ForkedPdb().set_trace()
+        
+#         if not (h,w) in self.cache_positions:
+#             x = torch.arange(w, device=device)
+#             y = torch.arange(h, device=device)
+#             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
+#         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
+#         return pos
+    
 class PositionGetter(object):
     """ return positions of patches """
 
     def __init__(self):
         self.cache_positions = {}
         
-    def __call__(self, b, h, w, device):
+    def __call__(self, b, h, w):
+        # ForkedPdb().set_trace()
+        
         if not (h,w) in self.cache_positions:
-            x = torch.arange(w, device=device)
-            y = torch.arange(h, device=device)
+            x = torch.arange(w)
+            y = torch.arange(h)
             self.cache_positions[h,w] = torch.cartesian_prod(y, x) # (h, w, 2)
         pos = self.cache_positions[h,w].view(1, h*w, 2).expand(b, -1, 2).clone()
         return pos

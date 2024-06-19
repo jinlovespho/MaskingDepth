@@ -10,7 +10,8 @@ DATA_ARGS="
 
 TRAINING_ARGS="
 --num_epoch 50
---batch_size 8
+--batch_size 4
+--backbone_lr 1e-5
 --learning_rate 1e-4
 --num_workers 4
 --seed 42
@@ -25,11 +26,15 @@ LOSS_ARGS="
 --training_loss supervised_depth
 "
 
+# crocostereo.pth
+# CroCo_V2_ViTBase_SmallDecoder.pth
+# CroCo_V2_ViTBase_BaseDecoder.pth
+# CroCo_V2_ViTLarge_BaseDecoder.pth
+
 MODEL_ARGS="
---model_info mf_baseline
---vit_type vit_base
---pretrained_weight croco
---masking_ratio 0.9
+--model_info mf_sup_croco_baseline
+--pretrained_weight_path ../pretrained_weights/crocostereo.pth
+--masking_ratio 0.0
 --cross_attn_depth 4
 --num_prev_frame 1
 "
@@ -40,8 +45,8 @@ SAVE_ARGS="
 
 LOGGING_ARGS="
     --log_tool wandb
-    --wandb_proj_name 20240215_MaskingDepth_multiframe
-    --wandb_exp_name pho_server5_gpu1_kitti_bs8_mf_baseline_mask09
+    --wandb_proj_name 20240612_MultiFrame_Depth
+    --wandb_exp_name pho_server5_gpu1_kitti_bs4_mf_sup_croco_baseline_interpolate_posemb_sigmoid
     --log_path /media/data1/jinlovespho/log/mfdepth
 "
 

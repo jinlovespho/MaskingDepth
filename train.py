@@ -1,5 +1,5 @@
+import argparse
 import os
-
 import torch
 from tqdm import tqdm
 import wandb
@@ -10,12 +10,56 @@ import loss
 from eval import visualize, eval_metric, get_eval_dict
 
 from torchvision.utils import save_image
-
-from args_train import get_train_args
 from networks.monodepth2_networks import compute_depth_losses
+
 
 TRAIN = 0
 EVAL  = 1
+
+
+def get_train_args():
+    parser = argparse.ArgumentParser(description='args')
+    # Data args 
+    parser.add_argument('--data_path',      type=str,   default='/path/to/data')
+    parser.add_argument("--dataset",        type=str,   choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test", 'kitti_depth_multiframe'])
+    parser.add_argument("--splits",         type=str,   choices=["eigen_zhou", "eigen_full", "odom", "benchmark", "eigen_temp"])
+    parser.add_argument('--img_ext',        type=str)
+    parser.add_argument('--re_height',      type=int,   default=192)
+    parser.add_argument('--re_width',       type=int,   default=640)   
+    # Training args 
+    parser.add_argument('--num_epoch',      type=int)  
+    parser.add_argument('--batch_size',     type=int)
+    parser.add_argument('--backbone_lr',    type=float)
+    parser.add_argument('--learning_rate',  type=float) 
+    parser.add_argument('--num_workers',    type=int) 
+    parser.add_argument('--seed',           type=int)
+    # Depth args 
+    parser.add_argument('--min_depth',      type=float,     default=0.1)
+    parser.add_argument('--max_depth',      type=float,     default=80.0)
+    # Loss args
+    parser.add_argument('--training_loss',  type=str)
+    parser.add_argument('--use_future_frame',   action='store_true')
+    # Model args 
+    parser.add_argument('--model_info',             type=str)
+    parser.add_argument('--vit_type',               type=str,   default='vit_base')
+    parser.add_argument('--pretrained_weight',      type=str)
+    parser.add_argument('--pretrained_weight_path', type=str)
+    parser.add_argument('--num_prev_frame',         type=int)
+    parser.add_argument('--cross_attn_depth',       type=int)
+    parser.add_argument('--masking_ratio',          type=float)
+    # Save args 
+    parser.add_argument("--epoch_save_freq", type=int, default=5)
+    # Logging args 
+    parser.add_argument('--log_tool',         type=str)
+    parser.add_argument('--wandb_proj_name',  type=str)
+    parser.add_argument('--wandb_exp_name',   type=str)
+    parser.add_argument('--log_path',         type=str,     default='./path/to/log')
+    # Etc args
+    parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--load_weight_path', type=str)
+    args = parser.parse_args()
+    return args
+
 
 if __name__ == "__main__":
     
@@ -34,12 +78,22 @@ if __name__ == "__main__":
     model, params_to_train = initialize.model_load(train_args, device)
         
     #optimizer & scheduler
-    encode_index = len(list(model['depth'].module.encoder.parameters()))
-    optimizer = torch.optim.Adam([  {"params": params_to_train[:encode_index], "lr": 1e-5}, 
-                                    {"params": params_to_train[encode_index:]},  ],              
+    # encode_index = len(list(model['depth'].module.encoder.parameters()))
+    # optimizer = torch.optim.Adam([  {"params": params_to_train[:encode_index], "lr": 1e-5}, 
+    #                                 {"params": params_to_train[encode_index:]},  ],              
                                  
-                                 float(train_args.learning_rate))
-     
+    #                              float(train_args.learning_rate))
+    
+    backbone_params = [param for name, param in model['depth'].module.model.named_parameters() if 'enc_block' in name]
+    else_params = [param for name, param in model['depth'].module.model.named_parameters() if 'enc_block' not in name]
+    
+    optimizer = torch.optim.Adam([  {'params': backbone_params, 'lr': train_args.backbone_lr}, 
+                                    {'params': else_params}],
+                                    train_args.learning_rate)
+    
+    print('backbone_lr: ', train_args.backbone_lr )
+    print('else_lr: ', train_args.learning_rate )
+
     '''
     params_to_train well loaded check
     
@@ -72,7 +126,7 @@ if __name__ == "__main__":
         # train loop
         tqdm_train = tqdm(train_loader, desc=f'Train Epoch: {epoch+1}/{train_args.num_epoch}')
         for i, inputs in enumerate(tqdm_train): 
-            
+                   
             # move tensors to cuda
             for key, val in inputs.items():
                 if type(val) == torch.Tensor:   # not all inputs are tensors
@@ -97,9 +151,21 @@ if __name__ == "__main__":
 
         # save model & optimzier (.pth)
         save_epoch_freq = int(train_args.epoch_save_freq)
-        if epoch+1 % save_epoch_freq == save_epoch_freq:
+        if (epoch+1) % save_epoch_freq == 0:
+            print('saved model')
             utils.save_component(train_args.log_path, train_args.wandb_exp_name, epoch, model, optimizer)
+        
+        # load_weight_depth = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/depth.pth')
+        # load_weight_pose_enc = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/pose_encoder.pth')
+        # load_weight_pose_dec = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/pose_decoder.pth')
 
+        # is_load_depth = model['depth'].module.load_state_dict(load_weight_depth)
+        # is_load_pose_enc = model['pose_encoder'].module.load_state_dict(load_weight_pose_enc)
+        # is_load_pose_dec = model['pose_decoder'].module.load_state_dict(load_weight_pose_dec)
+        # print(is_load_depth)
+        # print(is_load_pose_enc)
+        # print(is_load_pose_dec)
+        
         # validation
         with torch.no_grad():
             utils.model_mode(model,EVAL)

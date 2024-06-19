@@ -38,7 +38,8 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
     
     # supervised training
     if train_args.training_loss == 'supervised_depth':
-        pred_depth_orig = F.interpolate(model_outs['pred_depth'], size=(orig_h, orig_w), mode="bilinear", align_corners = False)   # (b,1,375,1242)
+        # breakpoint()
+        pred_depth_orig = F.interpolate(model_outs['pred_depth'], size=(orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
         non_zero_mask = (inputs['depth_gt'] > 0).detach() 
         losses['sup_loss'] = compute_sup_loss(pred_depth_orig, gt_depth, non_zero_mask)
 
@@ -56,7 +57,7 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
         recon_losses.append(recon_loss)
         smooth_losses.append(smooth_loss)
         
-        pred_depth_orig = F.interpolate(model_outs['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = False)   # (b,1,375,1242)
+        pred_depth_orig = F.interpolate(model_outs['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
         
         losses['selfsup_loss'] = torch.stack(recon_losses).mean()
         losses['smooth_loss'] = torch.stack(smooth_losses).mean()

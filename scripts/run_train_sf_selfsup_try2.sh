@@ -9,7 +9,6 @@ DATA_ARGS="
 --re_width 640 
 "
 
-
 TRAINING_ARGS="
 --num_epoch 50
 --batch_size 16
@@ -20,7 +19,7 @@ TRAINING_ARGS="
 
 DEPTH_ARGS="
 --min_depth 0.1
---max_depth 100.0
+--max_depth 80.0
 "
 
 LOSS_ARGS="
@@ -29,7 +28,7 @@ LOSS_ARGS="
 "
 
 MODEL_ARGS="
---model_info sf_selfsup_try1
+--model_info sf_selfsup_try2
 --vit_type vit_base
 --pretrained_weight vit_base_384
 "
@@ -39,9 +38,9 @@ SAVE_ARGS="
 "
 
 LOGGING_ARGS="
-    --log_tool wandb
+    --log_tool wandba
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name pho_server5_gpu2_kitti_bs16_sf_selfsup_try1_eigenzhou_re_depth_metric_maxdepth100_cornersFalse
+    --wandb_exp_name pho_server5_gpu3_kitti_bs16_sf_selfsup_try2_eigenzhou_enc_r152
     --log_path /media/data1/jinlovespho/log/mfdepth
 "
 
@@ -50,7 +49,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=2   python ../train.py        \
+CUDA_VISIBLE_DEVICES=3   python ../train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \
