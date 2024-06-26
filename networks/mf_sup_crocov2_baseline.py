@@ -11,7 +11,7 @@ from .croco_blocks import *
 from .fuse_cross_attn import *
 
 
-class MF_Sup_Croco_Baseline(nn.Module):
+class MF_Sup_CrocoV2_Baseline(nn.Module):
     def __init__(
         self,
         model

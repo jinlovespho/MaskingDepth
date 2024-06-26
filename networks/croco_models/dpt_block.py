@@ -321,7 +321,6 @@ class DPTOutputAdapter(nn.Module):
                 nn.Conv2d(feature_dim // 2, last_dim, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(True),
                 nn.Conv2d(last_dim, self.num_channels, kernel_size=1, stride=1, padding=0),
-                nn.Sigmoid(),
             )
         elif self.head_type == 'semseg':
             # The "DPTSegmentationModel" head
@@ -453,6 +452,6 @@ class DPTOutputAdapter(nn.Module):
 
     
         # Output head
-        out = self.head(path_1) * 80.00 # (b,2,352,704)
+        out = self.head(path_1) # (b,2,352,704)
 
         return out

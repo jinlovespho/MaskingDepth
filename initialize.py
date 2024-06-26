@@ -29,9 +29,13 @@ def seed_everything(seed=42):
 
 def print_exp_info(train_args):
         print('===================================')
+        print('LOAD_CKPT: ', train_args.pretrained_weight_path)
+        print('===================================')
         print('DATASET: ', train_args.dataset)
         print('KITTI SPLIT: ', train_args.splits)
         print('-----------------------------------')
+        print('BACKBONE_LR: ', train_args.backbone_lr)
+        print('ELSE_LR: ', train_args.lr)
         print('BATCH SIZE: ', train_args.batch_size)
         print('MASKING_RATIO: ', train_args.masking_ratio)
         print('-----------------------------------')
@@ -46,7 +50,7 @@ def print_exp_info(train_args):
 
 def model_load(train_args, device):
     model = {}
-    parameters_to_train = []
+    params_to_train = []
 
     if train_args.model_info == 'DPT':
         v = networks.vit.ViT( image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
@@ -189,7 +193,7 @@ def model_load(train_args, device):
 
     
     # JINLOVESPHO mf_sup_baseline
-    elif train_args.model_info == 'mf_sup_baseline':
+    elif train_args.model_info == 'mf_sup_vit_baseline':
         
         if train_args.vit_type == 'vit_base':
             print('ENCODER: vit_base')
@@ -223,7 +227,7 @@ def model_load(train_args, device):
             if train_args.vit_type == 'vit_base':
                 croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
             elif train_args.vit_type == 'vit_large':
-                croco_weight = torch.load('./CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTLarge_BaseDecoder.pth', map_location=device)
 
             loaded_weight = {}
             
@@ -249,8 +253,8 @@ def model_load(train_args, device):
                     print(key)
                     loaded_weight[key] = v.state_dict()[key]
         
-        else:
-            loaded_weight = torch.load("../../MaskingDepth/vit_base_384.pth", map_location=device)
+        elif train_args.pretrained_weight == 'vit_base_384':
+            loaded_weight = torch.load(train_args.pretrained_weight_path, map_location=device)
         
             for key, value in v.state_dict().items():
                 if key not in loaded_weight.keys():
@@ -264,7 +268,7 @@ def model_load(train_args, device):
         print_exp_info(train_args)
         
         breakpoint()
-        model['depth'] = networks.MF_Sup_Baseline(encoder=v,
+        model['depth'] = networks.MF_Sup_Baseline(  encoder=v,
                                                     max_depth = train_args.max_depth,
                                                     features=[96, 192, 384, 768],           # 무슨 feature ?
                                                     hooks=[2, 5, 8, 11],                    # hooks ?
@@ -276,46 +280,36 @@ def model_load(train_args, device):
                                                     croco = (train_args.pretrained_weight == 'croco'),
                                                     )        
     
-    # JINLOVESPHO mf_sup_croco_baseline
-    elif train_args.model_info == 'mf_sup_croco_baseline':
+    # crocov2_stereo_flow
+    elif train_args.model_info == 'mf_sup_crocov2_baseline':
         from networks.croco_models.croco_downstream import CroCoDownstreamBinocular
         from networks.croco_models.head_downstream import PixelwiseTaskWithDPT
         from networks.croco_models.pos_embed import interpolate_pos_embed
-        from networks.mf_sup_croco_baseline import MF_Sup_Croco_Baseline
+        from networks.mf_sup_crocov2_baseline import MF_Sup_CrocoV2_Baseline
         
-        if train_args.vit_type == 'vit_base':
-            print('ENCODER: vit_base')
-            enc_layers=12
-            enc_hidden_dim=768
-            enc_mlp_dim=3072
-            enc_heads=12
+        # debug purpose - check pretrained weights
+        # pw1= torch.load('../pretrained_weights/crocostereo.pth')
+        # pw2= torch.load('../pretrained_weights/CroCo_V2_ViTBase_SmallDecoder.pth')
+        # pw3= torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth')
+        # pw4= torch.load('../pretrained_weights/CroCo_V2_ViTLarge_BaseDecoder.pth')    
         
-        elif train_args.vit_type == 'vit_large':
-            print('ENCODER: vit_large')
-            enc_layers=24
-            enc_hidden_dim=1024
-            enc_mlp_dim=4096
-            enc_heads=16
-        
-        else:
-            print('vit type not valid')
-            
-        
-        pw1= torch.load('../pretrained_weights/crocostereo.pth')
-        pw2= torch.load('../pretrained_weights/CroCo_V2_ViTBase_SmallDecoder.pth')
-        pw3= torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth')
-        pw4= torch.load('../pretrained_weights/CroCo_V2_ViTLarge_BaseDecoder.pth')    
-        
+        # load pretrained weight
         ckpt = torch.load(train_args.pretrained_weight_path)
-        croco_args = ckpt['args'].croco_args
+        if train_args.pretrained_weight_path == '../pretrained_weights/crocostereo.pth':     
+            croco_args = ckpt['args'].croco_args
+            head_channel=2
+            is_strict=True
+        else:
+            croco_args = ckpt['croco_kwargs']
+            head_channel=1
+            is_strict=False
+
         croco_args['img_size'] = (train_args.re_height, train_args.re_width)
-        
         croco_head = PixelwiseTaskWithDPT()
-        croco_head.num_channels = 2     # 1 for only prediction, 2 for pred+confidence
-        
+        croco_head.num_channels = head_channel     # 1 for only prediction, 2 for pred+confidence
         croco_model = CroCoDownstreamBinocular(head=croco_head, **croco_args)
-        interpolate_pos_embed(croco_model, ckpt['model'])
-        msg = croco_model.load_state_dict(ckpt['model'], strict=True)
+        interpolate_pos_embed(croco_model, ckpt['model'])   
+        msg = croco_model.load_state_dict(ckpt['model'], strict=is_strict)
         print('CROCO_WEIGHT_WELL_LOADED: ', msg)
         print(croco_args)
         
@@ -325,9 +319,26 @@ def model_load(train_args, device):
         train_args = argparse.Namespace(**train_args)   # dict back to namespace
         print_exp_info(train_args)
         
+        n_param = sum(i.numel() for i in croco_model.parameters() ) / 1e6
+        print(f'NUM_PARAM: {n_param}M ')
+        train_args.n_param=n_param
+        
         breakpoint()
-        model['depth'] = MF_Sup_Croco_Baseline( model=croco_model,
-                                                )      
+        model['depth'] = MF_Sup_CrocoV2_Baseline( model=croco_model )      
+        
+        model_params = [param for name, param in model['depth'].model.named_parameters()]
+        backbone_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' in name]
+        else_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' not in name]
+        
+        params_to_train.append( {'params':backbone_params, 'lr':train_args.backbone_lr} )
+        params_to_train.append( {'params':else_params, 'lr':train_args.lr})
+
+        # tmp1 = [n for n,p in model['depth'].model.named_parameters()]
+        # tmp2 = [n for n,p in model['depth'].model.named_modules()]
+        t1 = len(model_params)
+        t2 = len(backbone_params)
+        t3 = len(else_params)
+        assert t1 == t2+t3, 'check params_to_train'
         
 
     # JINLOVESPHO Self Sup Try7
@@ -515,9 +526,9 @@ def model_load(train_args, device):
         model[key] = nn.DataParallel(val)
         model[key].to(device)
         model[key].train()
-        parameters_to_train += list(val.parameters())
+        # parameters_to_train += list(val.parameters())
 
-    return model, parameters_to_train
+    return model, params_to_train
 
 
 ############################################################################## 
