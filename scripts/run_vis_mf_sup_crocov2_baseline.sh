@@ -9,10 +9,7 @@ DATA_ARGS="
 "
 
 TRAINING_ARGS="
-    --num_epoch 50
-    --batch_size 8
-    --backbone_lr 5e-6
-    --lr 1e-4
+    --batch_size 16
     --num_workers 4
     --seed 42
 "
@@ -32,8 +29,9 @@ LOSS_ARGS="
 # CroCo_V2_ViTLarge_BaseDecoder.pth
 
 MODEL_ARGS="
-    --model_info mf_sup_crocov2_baseline
+    --model_info vis_mf_sup_crocov2_baseline
     --pretrained_weight_path ../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth
+    --load_weight_path /media/data1/jinlovespho/log/mfdepth/pho_server5_gpu3_kitti_bs8_mf_sup_baseline_crocov2_encB_decB/weights_50/depth.pth
 "
 
 SAVE_ARGS="
@@ -43,7 +41,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name pho_server5_gpu0_kitti_bs8_mf_sup_baseline_crocov2_encB_decB_bblr5e6
+    --wandb_exp_name vis_pho_server5_kitti_bs16_mf_sup_baseline_crocov2_encB_decB
     --log_path /media/data1/jinlovespho/log/mfdepth
 "
 
@@ -52,7 +50,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=0 python ../train.py   ${DATA_ARGS} \
+CUDA_VISIBLE_DEVICES=0 python ../vis.py     ${DATA_ARGS} \
                                             ${TRAINING_ARGS} \
                                             ${DEPTH_ARGS} \
                                             ${LOSS_ARGS} \

@@ -51,7 +51,7 @@ def print_exp_info(train_args):
 def model_load(train_args, device):
     model = {}
     params_to_train = []
-
+    
     if train_args.model_info == 'DPT':
         v = networks.vit.ViT( image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
                               patch_size = 16,
@@ -156,6 +156,34 @@ def model_load(train_args, device):
         model["pose_decoder"] = networks.monodepth2_networks.PoseDecoder(   model["pose_encoder"].num_ch_enc,
                                                                             num_input_features=1,
                                                                             num_frames_to_predict_for=2)
+        
+        params_to_train+=model['depth'].parameters()
+        params_to_train+=model['pose_encoder'].parameters()
+        params_to_train+=model['pose_decoder'].parameters()
+        
+        # model_params = [param for name, param in model['depth'].model.named_parameters()]
+        # backbone_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' in name]
+        # else_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' not in name]
+        
+        # params_to_train.append( {'params':backbone_params, 'lr':train_args.backbone_lr} )
+        # params_to_train.append( {'params':else_params, 'lr':train_args.lr})
+        
+        
+        # validation
+        ckpt_path=f'/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu1_kitti_bs16_sf_selfsup_try1_eigenzhou_re_depth_metric_maxdepth80_cornersTrue/weights_20'
+        depth_weight=f'{ckpt_path}/depth.pth'
+        pose_enc_weight=f'{ckpt_path}/pose_encoder.pth'
+        pose_dec_weight=f'{ckpt_path}/pose_decoder.pth'
+        
+        depth_weight = torch.load(depth_weight)
+        pose_enc_weight=torch.load(pose_enc_weight)
+        pose_dec_weight=torch.load(pose_dec_weight)
+        
+        msg1=model['depth'].load_state_dict(depth_weight, strict=True)
+        msg2=model['pose_encoder'].load_state_dict(pose_enc_weight, strict=True)
+        msg3=model['pose_decoder'].load_state_dict(pose_dec_weight, strict=True)
+        print(msg1,msg2,msg3)
+        breakpoint()
         
         if train_args.eval:
             pass
@@ -325,6 +353,61 @@ def model_load(train_args, device):
         
         breakpoint()
         model['depth'] = MF_Sup_CrocoV2_Baseline( model=croco_model )      
+        
+        model_params = [param for name, param in model['depth'].model.named_parameters()]
+        backbone_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' in name]
+        else_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' not in name]
+        
+        params_to_train.append( {'params':backbone_params, 'lr':train_args.backbone_lr} )
+        params_to_train.append( {'params':else_params, 'lr':train_args.lr})
+
+        # tmp1 = [n for n,p in model['depth'].model.named_parameters()]
+        # tmp2 = [n for n,p in model['depth'].model.named_modules()]
+        t1 = len(model_params)
+        t2 = len(backbone_params)
+        t3 = len(else_params)
+        assert t1 == t2+t3, 'check params_to_train'
+        
+    
+    # crocov2_try1
+    elif train_args.model_info == 'mf_sup_crocov2_try1':
+        from networks.croco_models.croco_downstream_mf_sup_try1 import CroCoDownstreamBinocular_MF_Sup_Try1
+        from networks.croco_models.head_downstream_mf_sup_try1 import PixelwiseTaskWithDPT_MF_Sup_Try1
+        from networks.croco_models.pos_embed import interpolate_pos_embed
+        from networks.mf_sup_crocov2_try1 import MF_Sup_CrocoV2_Try1
+
+        # load pretrained weight
+        ckpt = torch.load(train_args.pretrained_weight_path)
+        if train_args.pretrained_weight_path == '../pretrained_weights/crocostereo.pth':     
+            croco_args = ckpt['args'].croco_args
+            head_channel=2
+            is_strict=True
+        else:
+            croco_args = ckpt['croco_kwargs']
+            head_channel=1
+            is_strict=False
+
+        croco_args['img_size'] = (train_args.re_height, train_args.re_width)
+        croco_head = PixelwiseTaskWithDPT_MF_Sup_Try1()
+        croco_head.num_channels = head_channel     # 1 for only prediction, 2 for pred+confidence
+        croco_model = CroCoDownstreamBinocular_MF_Sup_Try1(head=croco_head, **croco_args)
+        interpolate_pos_embed(croco_model, ckpt['model'])   
+        msg = croco_model.load_state_dict(ckpt['model'], strict=is_strict)
+        print('CROCO_WEIGHT_WELL_LOADED: ', msg)
+        print(croco_args)
+        
+        # show experiment info in terminal
+        train_args=vars(train_args)     # vars ! change ~ to dict type
+        train_args.update(croco_args)
+        train_args = argparse.Namespace(**train_args)   # dict back to namespace
+        print_exp_info(train_args)
+        
+        n_param = sum(i.numel() for i in croco_model.parameters() ) / 1e6
+        print(f'NUM_PARAM: {n_param}M ')
+        train_args.n_param=n_param
+        
+        breakpoint()
+        model['depth'] = MF_Sup_CrocoV2_Try1( model=croco_model )      
         
         model_params = [param for name, param in model['depth'].model.named_parameters()]
         backbone_params = [param for name, param in model['depth'].model.named_parameters() if 'enc_block' in name]

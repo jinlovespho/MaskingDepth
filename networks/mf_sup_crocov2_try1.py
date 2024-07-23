@@ -10,8 +10,10 @@ import numpy as np
 from .croco_blocks import *
 from .fuse_cross_attn import *
 
+from .cats_networks.cats import CATs
 
-class MF_Sup_CrocoV2_Baseline(nn.Module):
+
+class MF_Sup_CrocoV2_Try1(nn.Module):
     def __init__(
         self,
         model
@@ -20,10 +22,18 @@ class MF_Sup_CrocoV2_Baseline(nn.Module):
         
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = model
-
+        self.cats = CATs(   feature_size=16,
+                            feature_proj_dim=128,
+                            depth=4,
+                            num_heads=6,
+                            mlp_ratio=4,
+                            hyperpixel_ids=[0,8,20,21,26,28,29,30],
+                            freeze=True)
+                                
+        
         
     def forward(self, inputs, train_args, mode):
-        
+    
         outputs={}
         
         img_frames=[]
@@ -35,12 +45,12 @@ class MF_Sup_CrocoV2_Baseline(nn.Module):
             img_frames.append(inputs['color_aug',  0, 0])   
             img_frames.append(inputs['color_aug', -1, 0])   
             # img_frames.append(inputs['color_aug',  1, 0])
+            
+        flow = self.cats(img_frames[0], img_frames[1])
         
-        
-        croco_outs = self.model(img_frames[0], img_frames[1])
-        outputs['pred_depth'] = croco_outs[:,0:1,:,:]
-        outputs['pred_depth_conf'] = croco_outs[:,1:2,:,:]
-        
+        croco_outs = self.model(img_frames[0], img_frames[1])   # b 1 192 640
+        outputs['pred_depth'] = croco_outs
+
         return outputs
     
     

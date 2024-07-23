@@ -35,7 +35,7 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
     
     # forward pass 
     model_outs = model_forward(inputs, model, train_args, mode)  # (b,1,192,640)
-    
+    breakpoint()
     # supervised training
     if train_args.training_loss == 'supervised_depth':
         # breakpoint()

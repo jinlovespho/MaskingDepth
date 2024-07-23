@@ -12,8 +12,8 @@ DATA_ARGS="
 
 TRAINING_ARGS="
 --num_epoch 50
---batch_size 16
---learning_rate 1e-4
+--batch_size 8
+--lr 1e-4
 --num_workers 4
 --seed 42
 "
@@ -50,7 +50,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=2   python ../train.py        \
+CUDA_VISIBLE_DEVICES=3   python ../train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

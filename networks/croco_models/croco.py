@@ -39,10 +39,10 @@ class CroCoNet(nn.Module):
                  norm_im2_in_dec=True,   # whether to apply normalization of the 'memory' = (second image) in the decoder 
                  pos_embed='cosine',     # positional embedding (either cosine or RoPE100)
                 ):
-                
+        
         super(CroCoNet, self).__init__()
         
-        # breakpoint()
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
                 
         # patch embeddings  (with initialization done as in MAE)
         self._set_patch_embed(img_size, patch_size, enc_embed_dim)
@@ -141,8 +141,7 @@ class CroCoNet(nn.Module):
         """
         # embed the image into patches  (x has size B x Npatches x C) 
         # and get position if each return patch (pos has size B x Npatches x 2)
-        # breakpoint()
-        x, pos = self.patch_embed(image)    # (b,n,d) (b,968,1024)    
+        x, pos = self.patch_embed(image)    # x (2b,n,d) (2b,480,768)     
         # add positional embedding without cls token  
         if self.enc_pos_embed is not None: 
             x = x + self.enc_pos_embed[None,...]
@@ -196,20 +195,21 @@ class CroCoNet(nn.Module):
             f1_ = f1_ + self.dec_pos_embed
             f2 = f2 + self.dec_pos_embed
         # apply Transformer blocks
-        out = f1_
+        out1 = f1_
         out2 = f2 
         if return_all_blocks:
-            _out, out = out, []
+            dec_out=[]
+            dec_sa_map=[]
+            dec_ca_map=[]
+
+            _out=out1
             for blk in self.dec_blocks:
-                _out, out2 = blk(_out, out2, pos1, pos2)
-                out.append(_out)
-            # breakpoint()
-            out[-1] = self.dec_norm(out[-1])
-        else:
-            for blk in self.dec_blocks:
-                out, out2 = blk(out, out2, pos1, pos2)
-            out = self.dec_norm(out)
-        return out
+                _out, out2, sa_map, ca_map = blk(_out, out2, pos1, pos2)
+                dec_out.append(_out)
+                dec_sa_map.append(sa_map)
+                dec_ca_map.append(ca_map)
+            dec_out[-1] = self.dec_norm(dec_out[-1])
+        return dec_out, dec_sa_map, dec_ca_map
 
     def patchify(self, imgs):
         """
@@ -260,8 +260,8 @@ class CroCoNet(nn.Module):
         target = self.patchify(img1)
         return out, mask1, target
 
-model = CroCoNet(mask_ratio=0.5)
-t1=torch.rand(8,3,224,224)
-t2=torch.rand(8,3,224,224)
+# model = CroCoNet(mask_ratio=0.5)
+# t1=torch.rand(8,3,224,224)
+# t2=torch.rand(8,3,224,224)
 
-out, mask, target = model(t1,t2)
+# out, mask, target = model(t1,t2)

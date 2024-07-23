@@ -73,10 +73,10 @@ if __name__ == "__main__":
     
     # set seed
     initialize.seed_everything(train_args.seed)
-    
+
     # model_load
     model, params_to_train = initialize.model_load(train_args, device)
-        
+    
     #optimizer & scheduler
     # encode_index = len(list(model['depth'].module.encoder.parameters()))
     # optimizer = torch.optim.Adam([  {"params": params_to_train[:encode_index], "lr": train_args.backbone_lr}, 
@@ -173,7 +173,8 @@ if __name__ == "__main__":
                 gt_depth = inputs['depth_gt']
                 pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
                 gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
-             
+            
+            breakpoint()
             eval_error = eval_metric(pred_depths, gt_depths, train_args)  
             error_dict = get_eval_dict(eval_error)
             error_dict["val_loss"] = eval_loss / len(val_loader)                

@@ -109,7 +109,7 @@ class Attention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        return x
+        return x, attn
 
 class Block(nn.Module):
 
@@ -125,7 +125,8 @@ class Block(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x, xpos):
-        x = x + self.drop_path(self.attn(self.norm1(x), xpos))
+        tmp_x, _ = self.attn(self.norm1(x), xpos)
+        x = x + self.drop_path(tmp_x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
@@ -166,7 +167,7 @@ class CrossAttention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B, Nq, C)
         x = self.proj(x)
         x = self.proj_drop(x)
-        return x
+        return x, attn
 
 class DecoderBlock(nn.Module):
 
@@ -184,11 +185,18 @@ class DecoderBlock(nn.Module):
         self.norm_y = norm_layer(dim) if norm_mem else nn.Identity()
 
     def forward(self, x, y, xpos, ypos):
-        x = x + self.drop_path(self.attn(self.norm1(x), xpos))
+        
+        tmp1_x, sa_map = self.attn(self.norm1(x), xpos) 
+        x = x + self.drop_path(tmp1_x)
+        
         y_ = self.norm_y(y)
-        x = x + self.drop_path(self.cross_attn(self.norm2(x), y_, y_, xpos, ypos))
+        
+        tmp2_x, ca_map = self.cross_attn(self.norm2(x), y_, y_, xpos, ypos)
+        x = x + self.drop_path(tmp2_x)
+
         x = x + self.drop_path(self.mlp(self.norm3(x)))
-        return x, y
+        
+        return x, y, sa_map, ca_map
         
         
 # patch embedding
@@ -223,6 +231,7 @@ class PatchEmbed(nn.Module):
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
         
         self.position_getter = PositionGetter()
+        
         
     def forward(self, x):
         B, C, H, W = x.shape

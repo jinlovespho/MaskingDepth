@@ -116,7 +116,7 @@ class CroCoDownstreamBinocular(CroCoNet):
         return_all_blocks = hasattr(self.head, 'return_all_blocks') and self.head.return_all_blocks
         out, out2, pos, pos2 = self.encode_image_pairs(img1, img2, return_all_blocks=return_all_blocks)
         if return_all_blocks:
-            decout = self._decoder(out[-1], pos, None, out2, pos2, return_all_blocks=return_all_blocks)
+            decout,_,_ = self._decoder(out[-1], pos, None, out2, pos2, return_all_blocks=return_all_blocks)
             decout = out+decout # 리스트끼리 덧셈. 그냥 append하는 것, 앞쪽에 out 즉 encoder output이 앞쪽으로 오도록
             # breakpoint()
         else:

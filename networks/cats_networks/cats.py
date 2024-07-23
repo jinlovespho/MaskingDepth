@@ -14,8 +14,8 @@ import torchvision.models as models
 # from models.feature_backbones import resnet
 # from models.mod import FeatureL2Norm, unnormalise_and_convert_mapping_to_flow
 
-from feature_backbones import resnet
-from mod import FeatureL2Norm, unnormalise_and_convert_mapping_to_flow
+from .feature_backbones import resnet
+from .mod import FeatureL2Norm, unnormalise_and_convert_mapping_to_flow
 
 
 r'''
@@ -144,12 +144,12 @@ class TransformerAggregator(nn.Module):
 
     def forward(self, corr, src, tgt):
         B = corr.shape[0]
-        x = corr.clone()
+        x = corr.clone()    # b n1 n2 where n1:src, n2:tgt
         
         pos_embed = torch.cat((self.pos_embed_x.repeat(1, 1, self.img_size, 1, 1), self.pos_embed_y.repeat(1, 1, 1, self.img_size, 1)), dim=4)
         pos_embed = pos_embed.flatten(2, 3)
 
-        x = torch.cat((x.transpose(-1, -2), tgt), dim=3) + pos_embed # tgt aligned pos_embed
+        x = torch.cat((x.transpose(-1, -2), tgt), dim=3) + pos_embed # tgt aligned pos_embed    # 즉 n2, n1+d
         x = self.blocks(x)  # (b,8,256,384) tgt-aligned
         x = self.proj(x) # (b,8,256,256) tgt-aligned
         x = x.transpose(-1, -2) + corr  # swapping the axis for swapping self-attention. src-aligned
@@ -261,7 +261,7 @@ class CATs(nn.Module):
 
     def soft_argmax(self, corr, beta=0.02):
         r'''SFNet: Learning Object-aware Semantic Flow (Lee et al.)'''
-        b,_,h,w = corr.size()
+        b,_,h,w = corr.size()   # b c h w 
         
         corr = self.softmax_with_temperature(corr, beta=beta, d=1)
         corr = corr.view(-1,h,w,h,w) # (tgt hxw) x (src hxw)
@@ -313,7 +313,7 @@ class CATs(nn.Module):
         tgt_feats = torch.stack(tgt_feats_proj, dim=1)  # (b,8,n2,d) (b,8,256,128)
         corr = torch.stack(corrs, dim=1)    # (b,8,n1,n2) (b,8,256,256)
         
-        corr = self.mutual_nn_filter(corr)
+        corr = self.mutual_nn_filter(corr)  # b 8 256 256 
 
         breakpoint()
         refined_corr = self.decoder(corr, src_feats, tgt_feats) # (b,n1,n2) (b,256,256)
@@ -321,18 +321,11 @@ class CATs(nn.Module):
         breakpoint()
 
         # self.feature_size 는 img 가 resnet 을 거쳐서 나온 output feature 의 size
-        grid_x, grid_y = self.soft_argmax(refined_corr.view(B, -1, self.feature_size, self.feature_size))
+        grid_x, grid_y = self.soft_argmax(refined_corr.view(B, -1, self.feature_size, self.feature_size))   # b 1 16 16 
 
-        flow = torch.cat((grid_x, grid_y), dim=1)
-        flow = unnormalise_and_convert_mapping_to_flow(flow)
+        # mapping(abolute pos), flow(relative pos)
+        mapping = torch.cat((grid_x, grid_y), dim=1)   # b 2 16 16 
+        flow = unnormalise_and_convert_mapping_to_flow(mapping)    # b 2 16 16 
 
-        return flow
+        return flow 
     
-cats = CATs()
-
-t1=torch.rand(8,3,224,224)
-t2=torch.rand(8,3,224,224)
-
-out = cats(t1,t2)
-
-breakpoint()
