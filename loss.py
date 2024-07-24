@@ -35,7 +35,6 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
     
     # forward pass 
     model_outs = model_forward(inputs, model, train_args, mode)  # (b,1,192,640)
-    breakpoint()
     # supervised training
     if train_args.training_loss == 'supervised_depth':
         # breakpoint()
@@ -79,9 +78,11 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
 
 
 def model_forward(inputs, model, train_args, mode):
-    outputs = model['depth'](inputs, train_args, mode)
+    if train_args.model_info == 'croco':
+        outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], 1)      
+    else:
+        outputs = model['depth'](inputs, train_args, mode)
     return outputs
-
 
 def pose_forward(inputs, model):
     

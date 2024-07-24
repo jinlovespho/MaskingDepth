@@ -6,8 +6,11 @@
 # --------------------------------------------------------
 
 import torch
+import torch.nn as nn
 
 from .croco import CroCoNet
+from .blocks import Conv4d_Module
+
 
 
 def croco_args_from_ckpt(ckpt):
@@ -77,48 +80,62 @@ class CroCoDownstreamBinocular(CroCoNet):
         super(CroCoDownstreamBinocular, self).__init__(**kwargs)
         head.setup(self)
         self.head = head
+        self.attn_conv4d = kwargs.get('attn_conv4d', False)
+        if self.attn_conv4d:
+            self.conv4d_module = nn.Sequential( Conv4d_Module(in_c=12,   out_c=64, ks=(3,3,5,9), pd=(1,1,0,0), str=(1,1,1,1)),
+                                             Conv4d_Module(in_c=64, out_c=64, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,2,2)),
+                                             Conv4d_Module(in_c=64, out_c=12, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,1,1)), )
 
-    def _set_mask_generator(self, *args, **kwargs):
-        """ No mask generator """
-        return
+    # def _set_mask_generator(self, *args, **kwargs):
+    #     """ No mask generator """
+    #     return
 
-    def _set_mask_token(self, *args, **kwargs):
-        """ No mask token """
-        self.mask_token = None
-        return
+    # def _set_mask_token(self, *args, **kwargs):
+    #     """ No mask token """
+    #     self.mask_token = None
+    #     return
 
     def _set_prediction_head(self, *args, **kwargs):
         """ No prediction head for downstream tasks, define your own head """
         return
         
-    def encode_image_pairs(self, img1, img2, return_all_blocks=False):
+    def encode_image_pairs(self, img1, img2, return_all_blocks=False,mode=0):
         """ run encoder for a pair of images
             it is actually ~5% faster to concatenate the images along the batch dimension 
              than to encode them separately
         """
         ## the two commented lines below is the naive version with separate encoding
-        #out, pos, _ = self._encode_image(img1, do_mask=False, return_all_blocks=return_all_blocks)
-        #out2, pos2, _ = self._encode_image(img2, do_mask=False, return_all_blocks=False)
+        out, pos, mask1 = self._encode_image(img1, do_mask=(mode==0), return_all_blocks=return_all_blocks)
+        out2, pos2, _ = self._encode_image(img2, do_mask=False, return_all_blocks=False)
         ## and now the faster version
-        out, pos, _ = self._encode_image( torch.cat( (img1,img2), dim=0), do_mask=False, return_all_blocks=return_all_blocks )
-        if return_all_blocks:
-            out,out2 = list(map(list, zip(*[o.chunk(2, dim=0) for o in out])))
-            out2 = out2[-1]
-        else:
-            out,out2 = out.chunk(2, dim=0)
-        pos,pos2 = pos.chunk(2, dim=0)            
-        return out, out2, pos, pos2
+        # out, pos, _ = self._encode_image( torch.cat( (img1,img2), dim=0), do_mask=False, return_all_blocks=return_all_blocks )
+        # if return_all_blocks:
+        #     out,out2 = list(map(list, zip(*[o.chunk(2, dim=0) for o in out])))
+        #     out2 = out2[-1]
+        # else:
+        #     out,out2 = out.chunk(2, dim=0)
+        # pos,pos2 = pos.chunk(2, dim=0)            
+        return out, out2, pos, pos2, mask1
 
-    def forward(self, img1, img2):
-        # breakpoint()
+    def forward(self, img1, img2, mode):
         B, C, H, W = img1.size()
         img_info = {'height': H, 'width': W}
         return_all_blocks = hasattr(self.head, 'return_all_blocks') and self.head.return_all_blocks
-        out, out2, pos, pos2 = self.encode_image_pairs(img1, img2, return_all_blocks=return_all_blocks)
+        out, out2, pos, pos2, mask1 = self.encode_image_pairs(img1, img2, return_all_blocks=return_all_blocks, mode=mode)
         if return_all_blocks:
-            decout,_,_ = self._decoder(out[-1], pos, None, out2, pos2, return_all_blocks=return_all_blocks)
-            decout = out+decout # 리스트끼리 덧셈. 그냥 append하는 것, 앞쪽에 out 즉 encoder output이 앞쪽으로 오도록
-            # breakpoint()
+            decout,attn_map, f1 = self._decoder(out[-1], pos, mask1, out2, pos2, return_all_blocks=return_all_blocks)
+            decout = out+decout
+            # decout = [d.detach() for d in decout]
         else:
-            decout = self._decoder(out, pos, None, out2, pos2, return_all_blocks=return_all_blocks)
+            decout,attn_map,f1 = self._decoder(out, pos, None, out2, pos2, return_all_blocks=return_all_blocks)#.detach()
+            
+            
+        if self.attn_conv4d:
+            attn_map = torch.stack(attn_map,dim=1).mean(dim=2)
+            attn_map = attn_map.detach()
+            attn_map = attn_map.reshape(B, 12, 12, 40, -1).reshape(B, 12, 12, 40, 12, 40)
+            attn_map = self.conv4d_module(attn_map)
+            attn_map = attn_map.reshape(4,12,480,64).permute(0,2,1,3).reshape(4,480,768)
+            decout[-1] = decout[-1] + attn_map
+        
         return self.head(decout, img_info)

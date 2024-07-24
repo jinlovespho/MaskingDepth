@@ -1,7 +1,7 @@
 
 
 DATA_ARGS="
---data_path /media/data1/KITTI 
+--data_path /home/cvlab08/projects/data/KITTI
 --dataset kitti_depth
 --splits eigen_zhou
 --img_ext .jpg 
@@ -11,11 +11,11 @@ DATA_ARGS="
 
 
 TRAINING_ARGS="
---num_epoch 50
+--num_epoch 20
 --batch_size 8
---lr 1e-4
+--learning_rate 1e-4
 --num_workers 4
---seed 42
+--seed 41
 "
 
 DEPTH_ARGS="
@@ -29,20 +29,21 @@ LOSS_ARGS="
 "
 
 MODEL_ARGS="
---model_info sf_selfsup_try1
+--model_info croco
 --vit_type vit_base
 --pretrained_weight vit_base_384
+--pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
 "
 
 SAVE_ARGS="
-    --epoch_save_freq 10
+    --epoch_save_freq 5
 "
 
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name pho_server5_gpu2_kitti_bs16_sf_selfsup_try1_eigenzhou_re_depth_metric_maxdepth100_cornersFalse
-    --log_path /media/data1/jinlovespho/log/mfdepth
+    --wandb_exp_name hg_croco_basebase_smooth
+    --log_path /home/projects/data/hg_log/selfsup_depth
 "
 
 ETC_ARGS="
@@ -50,7 +51,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=3   python ../train.py        \
+CUDA_VISIBLE_DEVICES=2   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

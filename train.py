@@ -30,7 +30,7 @@ def get_train_args():
     parser.add_argument('--num_epoch',      type=int)  
     parser.add_argument('--batch_size',     type=int)
     parser.add_argument('--backbone_lr',    type=float)
-    parser.add_argument('--lr',             type=float) 
+    parser.add_argument('--learning_rate',             type=float) 
     parser.add_argument('--num_workers',    type=int) 
     parser.add_argument('--seed',           type=int)
     # Depth args 
@@ -44,6 +44,8 @@ def get_train_args():
     parser.add_argument('--vit_type',               type=str,   default='vit_base')
     parser.add_argument('--pretrained_weight',      type=str)
     parser.add_argument('--pretrained_weight_path', type=str)
+    parser.add_argument('--pretrained_path', type=str)
+
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
     parser.add_argument('--masking_ratio',          type=float)
@@ -78,13 +80,23 @@ if __name__ == "__main__":
     model, params_to_train = initialize.model_load(train_args, device)
     
     #optimizer & scheduler
-    # encode_index = len(list(model['depth'].module.encoder.parameters()))
-    # optimizer = torch.optim.Adam([  {"params": params_to_train[:encode_index], "lr": train_args.backbone_lr}, 
-    #                                 {"params": params_to_train[encode_index:]} ],                                        
-    #                                 train_args.learning_rate)
-    
-    optimizer = torch.optim.Adam(params_to_train, train_args.lr)
-    
+    if train_args.model_info != 'croco':
+        encode_index = len(list(model['depth'].module.encoder.parameters()))
+        optimizer = torch.optim.Adam([{"params": params_to_train[:encode_index], "lr": 1e-5}, 
+                                    {"params": params_to_train[encode_index:]}  ], float(train_args.learning_rate))
+    else:
+        pretrained_params, other_params = [], []
+        for name, param in model['depth'].named_parameters():
+            if 'enc_blocks' in name or 'dec_blocks' in name:
+                pretrained_params.append(param)
+            else:
+                other_params.append(param)
+        
+        other_params += model['pose_encoder'].parameters()
+        other_params += model['pose_decoder'].parameters()      
+        
+        optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
+                                      {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
     # data loader
     train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
                                             
@@ -174,7 +186,6 @@ if __name__ == "__main__":
                 pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
                 gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
             
-            breakpoint()
             eval_error = eval_metric(pred_depths, gt_depths, train_args)  
             error_dict = get_eval_dict(eval_error)
             error_dict["val_loss"] = eval_loss / len(val_loader)                
