@@ -26,6 +26,7 @@ DEPTH_ARGS="
 LOSS_ARGS="
 --training_loss selfsupervised_img_recon
 --use_future_frame
+--smooth_weight 1e-3
 "
 
 MODEL_ARGS="
@@ -33,6 +34,8 @@ MODEL_ARGS="
 --vit_type vit_base
 --pretrained_weight vit_base_384
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
+--attn_agg
+--softmax_attn
 "
 
 SAVE_ARGS="
@@ -42,7 +45,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_lrup
+    --wandb_exp_name hg_croco_basebase_attnaggtest_softmax
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 
@@ -51,7 +54,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=2   python ./train.py        \
+CUDA_VISIBLE_DEVICES=0   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

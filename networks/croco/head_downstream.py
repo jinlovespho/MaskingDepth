@@ -13,7 +13,7 @@ The forward takes the features as well as a dictionary img_info containing the k
 
 import torch
 import torch.nn as nn
-from .dpt_block import DPTOutputAdapter
+from .dpt_block import DPTOutputAdapter, DPTOutputAggregateAdapter
 
 
 class PixelwiseTaskWithDPT(nn.Module):
@@ -24,7 +24,7 @@ class PixelwiseTaskWithDPT(nn.Module):
     """
 
     def __init__(self, *, hooks_idx=None, layer_dims=[96,192,384,768],
-                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., **kwargs):
+                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., attn_agg = False, **kwargs):
         super(PixelwiseTaskWithDPT, self).__init__()
         self.return_all_blocks = True # backbone needs to return all layers 
         self.postprocess = postprocess
@@ -33,6 +33,7 @@ class PixelwiseTaskWithDPT(nn.Module):
         self.hooks_idx = hooks_idx
         self.layer_dims = layer_dims
         self.max_depth = max_depth
+        self.attn_agg = attn_agg
     
     def setup(self, croconet):
         dpt_args = {'output_width_ratio': self.output_width_ratio, 'num_channels': self.num_channels, 'max_depth': self.max_depth}
@@ -47,13 +48,19 @@ class PixelwiseTaskWithDPT(nn.Module):
             print(f'  PixelwiseTaskWithDPT: automatically setting hook_idxs={self.hooks_idx}')
         dpt_args['hooks'] = self.hooks_idx
         dpt_args['layer_dims'] = self.layer_dims
-        self.dpt = DPTOutputAdapter(**dpt_args)
+        if self.attn_agg:
+            self.dpt = DPTOutputAggregateAdapter(**dpt_args)
+        else:
+            self.dpt = DPTOutputAdapter(**dpt_args)
         dim_tokens = [croconet.enc_embed_dim if hook<croconet.enc_depth else croconet.dec_embed_dim for hook in self.hooks_idx]
         dpt_init_args = {'dim_tokens_enc': dim_tokens}
         self.dpt.init(**dpt_init_args)
 
 
-    def forward(self, x, img_info):
-        out = self.dpt(x, image_size=(img_info['height'],img_info['width']))
+    def forward(self, x, img_info, attn_map=None):
+        if self.attn_agg:
+            out = self.dpt(x, image_size=(img_info['height'],img_info['width']),attn_map=attn_map)
+        else:
+            out = self.dpt(x, image_size=(img_info['height'],img_info['width']))
         if self.postprocess: out = self.postprocess(out)
         return out

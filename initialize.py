@@ -135,7 +135,11 @@ def model_load(train_args, device):
         print('Croco args: '+str(croco_args))
         num_channels = 1
         print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
-        head = PixelwiseTaskWithDPT()
+        
+        if train_args.attn_agg:
+            head = PixelwiseTaskWithDPT(attn_agg = train_args.attn_agg, hooks_idx=[14,17,20,23])
+        else:
+            head = PixelwiseTaskWithDPT()
         head.num_channels = num_channels
         model['depth'] = CroCoDownstreamBinocular(head, **croco_args)
         interpolate_pos_embed(model['depth'], ckpt['model'])

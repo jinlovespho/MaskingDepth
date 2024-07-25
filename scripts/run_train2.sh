@@ -15,7 +15,7 @@ TRAINING_ARGS="
 --batch_size 8
 --learning_rate 1e-4
 --num_workers 4
---seed 42
+--seed 41
 "
 
 DEPTH_ARGS="
@@ -42,8 +42,8 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase
-    --log_path /home/projects/data/hg_log/selfsup_depth
+    --wandb_exp_name hg_croco_basebase_smooth
+    --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 
 ETC_ARGS="

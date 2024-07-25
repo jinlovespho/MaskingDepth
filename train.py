@@ -39,13 +39,16 @@ def get_train_args():
     # Loss args
     parser.add_argument('--training_loss',  type=str)
     parser.add_argument('--use_future_frame',   action='store_true')
+    parser.add_argument("--smooth_weight", type=float, default=1e-3)
     # Model args 
     parser.add_argument('--model_info',             type=str)
     parser.add_argument('--vit_type',               type=str,   default='vit_base')
     parser.add_argument('--pretrained_weight',      type=str)
     parser.add_argument('--pretrained_weight_path', type=str)
     parser.add_argument('--pretrained_path', type=str)
-
+    parser.add_argument('--attn_agg', action="store_true")
+    parser.add_argument('--softmax_attn', action="store_true")
+    
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
     parser.add_argument('--masking_ratio',          type=float)
@@ -89,6 +92,8 @@ if __name__ == "__main__":
         for name, param in model['depth'].named_parameters():
             if 'enc_blocks' in name or 'dec_blocks' in name:
                 pretrained_params.append(param)
+            # if 'enc_blocks' in name:
+                # pretrained_params.append(param)
             else:
                 other_params.append(param)
         
@@ -98,7 +103,7 @@ if __name__ == "__main__":
         optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
                                       {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
     # data loader
-    train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
+    train_ds, valv_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
                                             
     # set wandb
     if train_args.log_tool == 'wandb':

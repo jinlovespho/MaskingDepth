@@ -78,7 +78,7 @@ class CroCoNet(nn.Module):
         self._set_mask_token(dec_embed_dim)
 
         # decoder 
-        self._set_decoder(enc_embed_dim, dec_embed_dim, dec_num_heads, dec_depth, mlp_ratio, norm_layer, norm_im2_in_dec)
+        self._set_decoder(enc_embed_dim, dec_embed_dim, dec_num_heads, dec_depth, mlp_ratio, norm_layer, norm_im2_in_dec, self.args.softmax_attn)
         
         # prediction head 
         self._set_prediction_head(dec_embed_dim, patch_size)

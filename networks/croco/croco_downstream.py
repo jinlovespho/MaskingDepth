@@ -138,4 +138,7 @@ class CroCoDownstreamBinocular(CroCoNet):
             attn_map = attn_map.reshape(4,12,480,64).permute(0,2,1,3).reshape(4,480,768)
             decout[-1] = decout[-1] + attn_map
         
+        if self.args.attn_agg:
+            return self.head(decout, img_info, attn_map)
+        
         return self.head(decout, img_info)

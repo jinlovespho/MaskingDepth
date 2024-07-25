@@ -113,7 +113,7 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
     
     loss = 0 
     loss_records = 0
-    smooth_loss = 0
+    smooth_losses = 0
     device = model_outs['pred_disp',0].device
 
     color = inputs['color',0,0]
@@ -194,6 +194,6 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
         norm_disp = disp / (mean_disp + 1e-7)
         smooth_loss = utils.get_smooth_loss(norm_disp, target)
 
-        smooth_loss += (1e-3) * smooth_loss / (2 ** scale)
+        smooth_losses += train_args.smooth_weight * smooth_loss / (2 ** scale)
 
-    return loss/4.0, mask, loss_records, smooth_loss/4.0
+    return loss/4.0, mask, loss_records, smooth_losses/4.0

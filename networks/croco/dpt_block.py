@@ -13,6 +13,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, repeat
 from typing import Union, Tuple, Iterable, List, Optional, Dict
+from networks.conv4d import Conv4d_Module
+from networks.croco.cats import TransformerAggregator
 
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
@@ -537,14 +539,36 @@ class DPTOutputAggregateAdapter(nn.Module):
 
         self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
 
-        self.scratch.refinenet1 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
-        self.scratch.refinenet2 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
-        self.scratch.refinenet3 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
-        self.scratch.refinenet4 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+        # self.feature_proj = nn.ModuleList([nn.Linear(256, 128) for i in range(4)])
+        self.aggregator0 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
+        self.aggregator1 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
+        self.aggregator2 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
+        self.aggregator3 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
+        
+        self.proj = nn.ModuleList([nn.Conv2d(256+480, 480,  kernel_size=1, stride=1, padding=0) for i in range(4)])
+        
+        # self.depth_head0 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
+        #                                 nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        # self.depth_head1 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
+        #                         nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        # self.depth_head2 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
+        #                 nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        # self.depth_head3 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
+        #             nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        
+        self.depth_head0 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        self.depth_head1 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        self.depth_head2 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        self.depth_head3 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
+        
+        
+
 
         if self.head_type == 'regression':
-
-            
             self.conv_disp3= nn.Sequential(
                                 nn.Conv2d(feature_dim, feature_dim // 2, kernel_size=3, stride=1, padding=1),
                                 Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
@@ -593,8 +617,8 @@ class DPTOutputAggregateAdapter(nn.Module):
         else:
             raise ValueError('DPT head_type must be "regression" or "semseg".')
 
-        if self.dim_tokens_enc is not None:
-            self.init(dim_tokens_enc=dim_tokens_enc)
+        # if self.dim_tokens_enc is not None:
+        #     self.init(dim_tokens_enc=dim_tokens_enc)
 
     def init(self, dim_tokens_enc=768):
         """
@@ -674,8 +698,8 @@ class DPTOutputAggregateAdapter(nn.Module):
         x = torch.cat(x, dim=-1)
         return x
 
-    def forward(self, encoder_tokens: List[torch.Tensor], image_size):
-            #input_info: Dict):
+    def forward(self, encoder_tokens: List[torch.Tensor], image_size, attn_map):
+            #input_info: Dict:
         outputs={}
         assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
         H, W = image_size
@@ -686,6 +710,7 @@ class DPTOutputAggregateAdapter(nn.Module):
 
         # Hook decoder onto 4 layers from specified ViT layers
         layers = [encoder_tokens[hook] for hook in self.hooks]
+        attn_maps = [attn_map[hook-12] for hook in self.hooks]
 
         # Extract only task-relevant tokens and ignore global tokens.
         layers = [self.adapt_tokens(l) for l in layers]
@@ -695,12 +720,51 @@ class DPTOutputAggregateAdapter(nn.Module):
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
+        
+        attn_maps = [rearrange(l.mean(dim=1), 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
+        attn_sizes = [(6,20),(12,40),(24,80),(48,160)]
+        # attn_maps = [rearrange(l, 'b c nh nw -> b (nh nw) c', nh=attn_sizes[idx][0], nw=attn_sizes[idx][1]) for idx, l in enumerate(attn_maps)]
 
-        # Fuse layers using refinement stages
-        path_4 = self.scratch.refinenet4(layers[3])
-        path_3 = self.scratch.refinenet3(path_4, layers[2])
-        path_2 = self.scratch.refinenet2(path_3, layers[1])
-        path_1 = self.scratch.refinenet1(path_2, layers[0])
+        # layer3 = self.feature_proj[3](rearrange(layers[3], 'b c nh nw -> b (nh nw) c')).unsqueeze(dim=1)
+        
+        attn_map0 = F.interpolate(attn_maps[0], size=attn_sizes[0], mode='bilinear')
+        attn_input0 = torch.cat([attn_map0, layers[3]], dim=1)
+        attn1_out = self.aggregator0(attn_input0) + attn_input0
+        attn1_out = self.proj[0](attn1_out)
+        
+        attn1 = F.interpolate(attn1_out, size=attn_sizes[1], mode='bilinear')
+        attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[1], mode='bilinear')
+        attn1 = attn1 + attn_maps[1]
+        
+        attn_input1 = torch.cat([attn1, layers[2]], dim=1)
+        attn2_out = self.aggregator1(attn_input1) + attn_input1
+        attn2_out = self.proj[1](attn2_out)
+
+
+        
+        attn2 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
+        attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[2], mode='bilinear')
+        attn2 = attn2 + attn_maps[2]
+        
+        attn_input2 = torch.cat([attn2, layers[1]], dim=1)
+        attn3_out = self.aggregator2(attn_input2) + attn_input2
+        attn3_out = self.proj[2](attn3_out)
+        
+        
+        attn3 = F.interpolate(attn3_out, size=attn_sizes[3], mode='bilinear')
+        attn_maps[3] = F.interpolate(attn_maps[3], size=attn_sizes[3], mode='bilinear')
+        attn3 = attn3 + attn_maps[3]
+        
+        attn_input3 = torch.cat([attn3, layers[0]], dim=1)
+        attn4_out = self.aggregator3(attn_input3) + attn_input3
+        attn4_out = self.proj[3](attn4_out)
+        
+        path_4 = self.depth_head0( )
+        path_3 = self.depth_head1(attn2_out)
+        path_2 = self.depth_head2(attn3_out)
+        path_1 = self.depth_head3(attn4_out)
+        
+
 
         # Output head
         # out = self.head(path_1)
