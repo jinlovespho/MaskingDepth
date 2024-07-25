@@ -759,7 +759,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         attn4_out = self.aggregator3(attn_input3) + attn_input3
         attn4_out = self.proj[3](attn4_out)
         
-        path_4 = self.depth_head0( )
+        path_4 = self.depth_head0(attn1_out)
         path_3 = self.depth_head1(attn2_out)
         path_2 = self.depth_head2(attn3_out)
         path_1 = self.depth_head3(attn4_out)
