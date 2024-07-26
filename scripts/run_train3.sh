@@ -2,7 +2,7 @@
 
 DATA_ARGS="
 --data_path /home/cvlab08/projects/data/KITTI
---dataset kitti_depth
+--dataset kitti
 --splits eigen_zhou
 --img_ext .jpg 
 --re_height 192 
@@ -36,6 +36,9 @@ MODEL_ARGS="
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
 --attn_agg
 --softmax_attn
+--encoder_freeze
+--decoder_freeze
+--residual
 "
 
 SAVE_ARGS="
@@ -45,7 +48,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggtest_softmax
+    --wandb_exp_name hg_croco_basebase_attnaggtest_softmax_encdecfreeze_resi
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

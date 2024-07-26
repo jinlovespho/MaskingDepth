@@ -2,7 +2,7 @@
 
 DATA_ARGS="
 --data_path /home/cvlab08/projects/data/KITTI
---dataset kitti_depth
+--dataset kitti
 --splits eigen_zhou
 --img_ext .jpg 
 --re_height 192 
@@ -13,7 +13,7 @@ DATA_ARGS="
 TRAINING_ARGS="
 --num_epoch 20
 --batch_size 8
---learning_rate 1e-5
+--learning_rate 1e-4
 --num_workers 4
 --seed 41
 "
@@ -42,7 +42,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_lr1e5
+    --wandb_exp_name hg_croco_basebase
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

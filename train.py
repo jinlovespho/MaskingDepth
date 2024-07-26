@@ -48,6 +48,11 @@ def get_train_args():
     parser.add_argument('--pretrained_path', type=str)
     parser.add_argument('--attn_agg', action="store_true")
     parser.add_argument('--softmax_attn', action="store_true")
+    parser.add_argument('--with_pose', action="store_true")
+    parser.add_argument('--encoder_freeze', action='store_true')
+    parser.add_argument('--decoder_freeze', action='store_true')
+    parser.add_argument('--residual', action='store_true')
+    parser.add_argument('--single', action="store_true")
     
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
@@ -97,8 +102,17 @@ if __name__ == "__main__":
             else:
                 other_params.append(param)
         
-        other_params += model['pose_encoder'].parameters()
-        other_params += model['pose_decoder'].parameters()      
+        if not train_args.with_pose:
+            other_params += model['pose_encoder'].parameters()
+            other_params += model['pose_decoder'].parameters()
+            
+        for name,param in model['depth'].named_parameters():
+            if 'enc_blocks' in name:
+                if train_args.encoder_freeze:
+                    param.requires_grad = False
+            if 'dec_blocks' in name:
+                if train_args.decoder_freeze:
+                    param.requires_grad = False     
         
         optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
                                       {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))

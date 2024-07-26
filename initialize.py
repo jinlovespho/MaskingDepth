@@ -95,6 +95,46 @@ def model_load(train_args, device):
         resnet_encoder = networks.ResnetEncoder(50, True, mask_layer=3)
         depth_decoder = networks.DepthDecoder(num_ch_enc=resnet_encoder.num_ch_enc, scales=range(4))
         model['depth'] = networks.Monodepth(resnet_encoder, depth_decoder, max_depth = train_args.max_depth)
+
+    elif train_args.model_info == 'sf_multiframe_imagenet':
+        from networks.masking_depth_dpt import Masked_DPT_Multiframe_Croco_Baseline
+
+        v = networks.ViT_Multiframe( image_size = (384,384),        # DPT 의 ViT-Base setting 그대로 가져옴. 
+                        patch_size = 16,
+                        num_classes = 1000,
+                        dim = 768,
+                        depth = 12,                     # transformer 의 layer(attention+ff) 개수 의미
+                        heads = 12,
+                        mlp_dim = 3072,
+                        num_prev_frame=1)
+        
+        if train_args.pretrained_weight == 'vit_base_384':
+            loaded_weight = torch.load("../../seonghoon/MaskingDepth/vit_base_384.pth", map_location=device)
+        
+            for key, value in v.state_dict().items():
+                if key not in loaded_weight.keys():
+                    loaded_weight[key] = loaded_weight['pos_embedding']
+
+            is_well_loaded=v.load_state_dict(loaded_weight)
+            print(is_well_loaded)
+
+        v.resize_pos_embed(192,640,device)
+        model['depth'] = Masked_DPT_Multiframe_Croco_Baseline( encoder=v,
+                                                                max_depth = train_args.max_depth,
+                                                                features=[96, 192, 384, 768],           # 무슨 feature ?
+                                                                hooks=[2, 5, 8, 11],                    # hooks ?
+                                                                vit_features=768,                       # embed dim ? yes!
+                                                                use_readout='project',
+                                                                masking_ratio=0.0)
+
+        model["pose_encoder"] = networks.monodepth2_networks.ResnetEncoder(18,True,num_input_images=2 )
+        model["pose_decoder"] = networks.monodepth2_networks.PoseDecoder(   model["pose_encoder"].num_ch_enc,
+                                                                                num_input_features=1,
+                                                                                num_frames_to_predict_for=2)
+
+        params_to_train+=model['depth'].parameters()
+        params_to_train+=model['pose_encoder'].parameters()
+        params_to_train+=model['pose_decoder'].parameters()
         
     
     # JINLOVESPHO sf_baseline
@@ -137,19 +177,20 @@ def model_load(train_args, device):
         print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
         
         if train_args.attn_agg:
-            head = PixelwiseTaskWithDPT(attn_agg = train_args.attn_agg, hooks_idx=[14,17,20,23])
+            head = PixelwiseTaskWithDPT(attn_agg = train_args.attn_agg, hooks_idx=[14,17,20,23], with_pose = train_args.with_pose,residual = train_args.residual, single = train_args.single)
         else:
-            head = PixelwiseTaskWithDPT()
+            head = PixelwiseTaskWithDPT(residual = train_args.residual, single=train_args.single)
         head.num_channels = num_channels
         model['depth'] = CroCoDownstreamBinocular(head, **croco_args)
         interpolate_pos_embed(model['depth'], ckpt['model'])
         
         msg = model['depth'].load_state_dict(ckpt['model'], strict=False)
         
-        model["pose_encoder"] = networks.monodepth2_networks.ResnetEncoder(18,True,num_input_images=2 )
-        model["pose_decoder"] = networks.monodepth2_networks.PoseDecoder(   model["pose_encoder"].num_ch_enc,
-                                                                            num_input_features=1,
-                                                                            num_frames_to_predict_for=2)
+        if not train_args.with_pose:
+            model["pose_encoder"] = networks.monodepth2_networks.ResnetEncoder(18,True,num_input_images=2 )
+            model["pose_decoder"] = networks.monodepth2_networks.PoseDecoder(   model["pose_encoder"].num_ch_enc,
+                                                                                num_input_features=1,
+                                                                                num_frames_to_predict_for=2)
     
     
     # JINLOVESPHO sf_selfsup_try1
@@ -166,6 +207,35 @@ def model_load(train_args, device):
         if train_args.pretrained_weight == 'vit_base_384':
             is_well_loaded=v.load_state_dict(torch.load("../../seonghoon/MaskingDepth/vit_base_384.pth"))
             print(is_well_loaded)
+            
+        if train_args.pretrained_weight == 'croco':
+            if train_args.vit_type == 'vit_base':
+                croco_weight = torch.load('../pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth', map_location=device)
+
+            loaded_weight = {}
+            
+            for key, value in v.state_dict().items():
+                if 'transformer' in key:
+                    if '0.norm' in key:
+                        # breakpoint()
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm1.{key.split(".")[-1]}']
+                    elif 'qkv' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.qkv.{key.split(".")[-1]}']
+                    elif 'to_out' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.attn.proj.{key.split(".")[-1]}']
+                    elif '1.norm' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.norm2.{key.split(".")[-1]}']
+                    elif 'fn.net.0' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc1.{key.split(".")[-1]}']
+                    elif 'fn.net.3' in key:
+                        loaded_weight[key] = croco_weight['model'][f'enc_blocks.{key.split(".")[2]}.mlp.fc2.{key.split(".")[-1]}']
+                    
+                elif 'to_patch_embedding' in key:
+                    loaded_weight[key] = croco_weight['model'][f'patch_embed.proj.{key.split(".")[-1]}']
+
+                else:
+                    print(key)
+                    loaded_weight[key] = v.state_dict()[key]
             
         v.resize_pos_embed(192,640)
         

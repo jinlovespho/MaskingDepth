@@ -33,6 +33,7 @@ MODEL_ARGS="
 --vit_type vit_base
 --pretrained_weight vit_base_384
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
+--residual 
 "
 
 SAVE_ARGS="
@@ -42,7 +43,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_smooth
+    --wandb_exp_name hg_croco_baseline_residual
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

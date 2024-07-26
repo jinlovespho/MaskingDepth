@@ -24,7 +24,7 @@ class PixelwiseTaskWithDPT(nn.Module):
     """
 
     def __init__(self, *, hooks_idx=None, layer_dims=[96,192,384,768],
-                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., attn_agg = False, **kwargs):
+                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., attn_agg = False,with_pose=False, residual = False, single=False, **kwargs):
         super(PixelwiseTaskWithDPT, self).__init__()
         self.return_all_blocks = True # backbone needs to return all layers 
         self.postprocess = postprocess
@@ -34,6 +34,9 @@ class PixelwiseTaskWithDPT(nn.Module):
         self.layer_dims = layer_dims
         self.max_depth = max_depth
         self.attn_agg = attn_agg
+        self.with_pose = with_pose
+        self.residual = residual
+        self.single = single
     
     def setup(self, croconet):
         dpt_args = {'output_width_ratio': self.output_width_ratio, 'num_channels': self.num_channels, 'max_depth': self.max_depth}
@@ -46,9 +49,17 @@ class PixelwiseTaskWithDPT(nn.Module):
                 hooks_idx = [croconet.enc_depth-1-i*step for i in range(3,-1,-1)]
             self.hooks_idx = hooks_idx
             print(f'  PixelwiseTaskWithDPT: automatically setting hook_idxs={self.hooks_idx}')
+        if self.residual:
+            self.hooks_idx = [2,5,8,11] + self.hooks_idx
+        if self.single:
+            self.hooks_idx = [2,5,8,11]
+
+        dpt_args['residual'] = self.residual
         dpt_args['hooks'] = self.hooks_idx
         dpt_args['layer_dims'] = self.layer_dims
         if self.attn_agg:
+            dpt_args['with_pose'] = self.with_pose
+            
             self.dpt = DPTOutputAggregateAdapter(**dpt_args)
         else:
             self.dpt = DPTOutputAdapter(**dpt_args)

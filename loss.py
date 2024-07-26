@@ -50,7 +50,8 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
         smooth_losses = []
 
         #forward pose_net
-        fa,ft,ba,bt = pose_forward(inputs, model)
+        if not train_args.with_pose:
+            fa,ft,ba,bt = pose_forward(inputs, model)
 
         recon_loss, mask, _,smooth_loss = compute_selfsup_mono_loss(model_outs, inputs, train_args, fa, ft,ba,bt)
         recon_losses.append(recon_loss)
