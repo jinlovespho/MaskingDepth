@@ -7,6 +7,7 @@
 
 import torch
 import torch.nn as nn
+from einops import rearrange, repeat
 
 from .croco import CroCoNet
 from .blocks import Conv4d_Module
@@ -81,10 +82,6 @@ class CroCoDownstreamBinocular(CroCoNet):
         head.setup(self)
         self.head = head
         self.attn_conv4d = kwargs.get('attn_conv4d', False)
-        if self.attn_conv4d:
-            self.conv4d_module = nn.Sequential( Conv4d_Module(in_c=12,   out_c=64, ks=(3,3,5,9), pd=(1,1,0,0), str=(1,1,1,1)),
-                                             Conv4d_Module(in_c=64, out_c=64, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,2,2)),
-                                             Conv4d_Module(in_c=64, out_c=12, ks=(3,3,3,3), pd=(1,1,1,1), str=(1,1,1,1)), )
 
     # def _set_mask_generator(self, *args, **kwargs):
     #     """ No mask generator """
@@ -117,11 +114,16 @@ class CroCoDownstreamBinocular(CroCoNet):
         # pos,pos2 = pos.chunk(2, dim=0)            
         return out, out2, pos, pos2, mask1
 
-    def forward(self, img1, img2, mode):
+    def forward(self, img1, img2, mode, intrinsics=None):
         B, C, H, W = img1.size()
         img_info = {'height': H, 'width': W}
         return_all_blocks = hasattr(self.head, 'return_all_blocks') and self.head.return_all_blocks
         out, out2, pos, pos2, mask1 = self.encode_image_pairs(img1, img2, return_all_blocks=return_all_blocks, mode=mode)
+        
+        if self.args.encoder_freeze:
+            out = [o.detach() for o in out]
+            out2 = out2.detach()
+        
         if return_all_blocks:
             decout,attn_map, f1 = self._decoder(out[-1], pos, mask1, out2, pos2, return_all_blocks=return_all_blocks)
             decout = out+decout
@@ -130,15 +132,11 @@ class CroCoDownstreamBinocular(CroCoNet):
             decout,attn_map,f1 = self._decoder(out, pos, None, out2, pos2, return_all_blocks=return_all_blocks)#.detach()
             
             
-        if self.attn_conv4d:
-            attn_map = torch.stack(attn_map,dim=1).mean(dim=2)
-            attn_map = attn_map.detach()
-            attn_map = attn_map.reshape(B, 12, 12, 40, -1).reshape(B, 12, 12, 40, 12, 40)
-            attn_map = self.conv4d_module(attn_map)
-            attn_map = attn_map.reshape(4,12,480,64).permute(0,2,1,3).reshape(4,480,768)
-            decout[-1] = decout[-1] + attn_map
-        
+            
+        if self.args.decoder_freeze:
+            decout = [d.detach() for d in decout]
+            
         if self.args.attn_agg:
-            return self.head(decout, img_info, attn_map)
+            return self.head(decout, img_info, attn_map, intrinsics=intrinsics)
         
-        return self.head(decout, img_info)
+        return self.head(decout, img_info, attn_map)

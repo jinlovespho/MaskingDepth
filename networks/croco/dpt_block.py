@@ -16,6 +16,7 @@ from typing import Union, Tuple, Iterable, List, Optional, Dict
 from networks.conv4d import Conv4d_Module
 from networks.croco.cats import TransformerAggregator
 from networks.croco.pose_regress import CrossBlock
+from timm.models.layers import DropPath, trunc_normal_
 
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
@@ -296,6 +297,7 @@ class DPTOutputAdapter(nn.Module):
                  max_depth = 80.,
                  residual = False,
                  single = False,
+                 args = None,
                  **kwargs):
         super().__init__()
         self.num_channels = num_channels
@@ -310,6 +312,7 @@ class DPTOutputAdapter(nn.Module):
         self.max_depth=max_depth
         self.residual = residual
         self.single = single
+        self.args = args
 
         # Actual patch height and width, taking into account stride of input
         self.P_H = max(1, self.patch_size[0] // stride_level)
@@ -321,6 +324,26 @@ class DPTOutputAdapter(nn.Module):
         self.scratch.refinenet2 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
         self.scratch.refinenet3 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
         self.scratch.refinenet4 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+        
+        if self.args.attn_conv4d:
+            self.norm0 = nn.BatchNorm2d(256+480)
+            self.norm1 = nn.BatchNorm2d(256+480)
+            self.norm2 = nn.BatchNorm2d(256+480)
+            self.norm3 = nn.BatchNorm2d(256+480)
+
+            self.aggregator0 = nn.Sequential(nn.GELU(),
+                                    nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                    nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1))
+            self.aggregator1 = nn.Sequential(nn.GELU(),
+                                            nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),                            
+                                            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1))
+            self.aggregator2 = nn.Sequential(nn.GELU(),
+                                            nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1))
+            self.aggregator3 = nn.Sequential(nn.GELU(),
+                                            nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+                                            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1))
+
 
         if self.head_type == 'regression':
 
@@ -375,6 +398,40 @@ class DPTOutputAdapter(nn.Module):
 
         if self.dim_tokens_enc is not None:
             self.init(dim_tokens_enc=dim_tokens_enc)
+
+        if self.args.attn_conv4d:
+            self._init_weights()
+
+    def _init_weights(self):
+        trunc_normal_(self.aggregator0[1].weight, std=.02)
+        trunc_normal_(self.aggregator0[2].weight, std=.02)
+        trunc_normal_(self.aggregator1[1].weight, std=.02)
+        trunc_normal_(self.aggregator1[2].weight, std=.02)
+        trunc_normal_(self.aggregator2[1].weight, std=.02)
+        trunc_normal_(self.aggregator2[2].weight, std=.02)
+        trunc_normal_(self.aggregator3[1].weight, std=.02)
+        trunc_normal_(self.aggregator3[2].weight, std=.02)
+
+        nn.init.constant_(self.aggregator0[1].bias, 0)
+        nn.init.constant_(self.aggregator0[2].bias, 0)
+        nn.init.constant_(self.aggregator1[1].bias, 0)
+        nn.init.constant_(self.aggregator1[2].bias, 0)
+        nn.init.constant_(self.aggregator2[1].bias, 0)
+        nn.init.constant_(self.aggregator2[2].bias, 0)
+        nn.init.constant_(self.aggregator3[1].bias, 0)
+        nn.init.constant_(self.aggregator3[2].bias, 0)
+
+        nn.init.constant_(self.norm0.bias, 0)
+        nn.init.constant_(self.norm1.bias, 0)
+        nn.init.constant_(self.norm2.bias, 0)
+        nn.init.constant_(self.norm3.bias, 0)
+
+        nn.init.constant_(self.norm0.weight, 1.0)
+        nn.init.constant_(self.norm1.weight, 1.0)
+        nn.init.constant_(self.norm2.weight, 1.0)
+        nn.init.constant_(self.norm3.weight, 1.0)
+
+
 
     def init(self, dim_tokens_enc=768):
         """
@@ -454,7 +511,7 @@ class DPTOutputAdapter(nn.Module):
         x = torch.cat(x, dim=-1)
         return x
 
-    def forward(self, encoder_tokens: List[torch.Tensor], image_size):
+    def forward(self, encoder_tokens: List[torch.Tensor], image_size, attn_map=None,):
             #input_info: Dict):
         outputs={}
         assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
@@ -466,8 +523,13 @@ class DPTOutputAdapter(nn.Module):
 
         # Hook decoder onto 4 layers from specified ViT layers
         layers = [encoder_tokens[hook] for hook in self.hooks]
+        
         if self.residual:
             layers = [layers[0]+layers[4], layers[1]+layers[5], layers[2]+layers[6], layers[3]+layers[7]]
+        
+
+            
+            
         
 
         # Extract only task-relevant tokens and ignore global tokens.
@@ -479,12 +541,39 @@ class DPTOutputAdapter(nn.Module):
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
+        
+        if self.args.attn_conv4d:
+            resi = 0
+            attn_maps = [(attn_map[hook-12] + attn_map[hook-13] + attn_map[hook-14])/3. for hook in self.hooks]
+            attn_maps = [rearrange(l.mean(dim=1), 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
+            attn_sizes = [(N_H//2,N_W//2),(N_H,N_W),(N_H*2,N_W*2),(N_H*4,N_W*4)]
+            
+            attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear', align_corners=False)
+            attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear', align_corners=False)
+            attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear', align_corners=False)
+            attn_maps[3] = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear', align_corners=False)
+            
+            input0 = torch.cat([layers[resi+0], attn_maps[0]], dim=1)
+            input1 = torch.cat([layers[resi+1], attn_maps[1]], dim=1)
+            input2 = torch.cat([layers[resi+2], attn_maps[2]], dim=1)
+            input3 = torch.cat([layers[resi+3], attn_maps[3]], dim=1)
+            
+            
+            layers[resi+3] = self.aggregator3(input3) + layers[resi+3]
+            layers[resi+2] = self.aggregator2(input2) + layers[resi+2]
+            layers[resi+1] = self.aggregator1(input1) + layers[resi+1]
+            layers[resi+0] = self.aggregator0(input0) + layers[resi+0]
+
+            
 
         # Fuse layers using refinement stages
         path_4 = self.scratch.refinenet4(layers[3])
         path_3 = self.scratch.refinenet3(path_4, layers[2])
         path_2 = self.scratch.refinenet2(path_3, layers[1])
         path_1 = self.scratch.refinenet1(path_2, layers[0])
+        
+            
+        
 
         # Output head
         # out = self.head(path_1)
@@ -551,16 +640,25 @@ class DPTOutputAggregateAdapter(nn.Module):
         self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
 
         # self.feature_proj = nn.ModuleList([nn.Linear(256, 128) for i in range(4)])
-        self.aggregator0 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+        self.norm0 = nn.BatchNorm2d(256+480)
+        self.norm1 = nn.BatchNorm2d(256+480)
+        self.norm2 = nn.BatchNorm2d(256+480)
+        self.norm3 = nn.BatchNorm2d(256+480)
+
+        self.aggregator0 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
                                           nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
-        self.aggregator1 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+        self.aggregator1 = nn.Sequential(nn.GELU(),
+                                        nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
                                           nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
-        self.aggregator2 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+        self.aggregator2 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
                                           nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
-        self.aggregator3 = nn.Sequential(nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
+        self.aggregator3 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
                                           nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
         
-        self.proj = nn.ModuleList([nn.Conv2d(256+480, 480,  kernel_size=3, stride=1, padding=1) for i in range(4)])
+        self.proj = nn.ModuleList([nn.Conv2d(256+480, 480,  kernel_size=1, stride=1, padding=0) for i in range(4)])
         
         # self.depth_head0 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
         #                                 nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
@@ -586,7 +684,7 @@ class DPTOutputAggregateAdapter(nn.Module):
                 nn.ReLU(),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Linear(256, 128 * 2),
+                nn.Linear(256, 128),
                 nn.ReLU(),
                 
             )
@@ -656,8 +754,20 @@ class DPTOutputAggregateAdapter(nn.Module):
         else:
             raise ValueError('DPT head_type must be "regression" or "semseg".')
 
+        self._init_weights()
         # if self.dim_tokens_enc is not None:
         #     self.init(dim_tokens_enc=dim_tokens_enc)
+
+    def _init_weights(self):
+        nn.init.constant_(self.norm0.bias, 0)
+        nn.init.constant_(self.norm1.bias, 0)
+        nn.init.constant_(self.norm2.bias, 0)
+        nn.init.constant_(self.norm3.bias, 0)
+
+        nn.init.constant_(self.norm0.weight, 1.0)
+        nn.init.constant_(self.norm1.weight, 1.0)
+        nn.init.constant_(self.norm2.weight, 1.0)
+        nn.init.constant_(self.norm3.weight, 1.0)
 
     def init(self, dim_tokens_enc=768):
         """
@@ -759,7 +869,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         b3 = torch.cross(b1, b2, dim=-1)
         return torch.stack((b1, b2, b3), dim=-2)  # corresponds to row
 
-    def forward(self, encoder_tokens: List[torch.Tensor], image_size, attn_map):
+    def forward(self, encoder_tokens: List[torch.Tensor], image_size, attn_map,intrinsics=None):
             #input_info: Dict:
         outputs={}
         assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
@@ -773,9 +883,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         layers = [encoder_tokens[hook] for hook in self.hooks]
         if self.residual:
             layers = [layers[0]+layers[4], layers[1]+layers[5], layers[2]+layers[6], layers[3]+layers[7]]
-        attn_maps = [attn_map[hook-12] for hook in self.hooks]
-        for i in range(4):
-            attn_maps[i][:,:,0] = 0
+        attn_maps = [(attn_map[hook-12] + attn_map[hook-13] + attn_map[hook-14])/3. for hook in self.hooks]
 
         # Extract only task-relevant tokens and ignore global tokens.
         layers = [self.adapt_tokens(l) for l in layers]
@@ -792,48 +900,46 @@ class DPTOutputAggregateAdapter(nn.Module):
 
         # layer3 = self.feature_proj[3](rearrange(layers[3], 'b c nh nw -> b (nh nw) c')).unsqueeze(dim=1)
         
-        attn_map0 = F.interpolate(attn_maps[0], size=attn_sizes[0], mode='bilinear')
-        attn_input0 = torch.cat([attn_map0, layers[3]], dim=1)
-        attn1_out = self.aggregator0(attn_input0) + attn_input0
-        attn1_out = self.proj[0](attn1_out)
+        attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
+        attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)
+        attn3_out = self.aggregator3(attn_input3) + attn_input3
+        attn3_out = self.proj[3](attn3_out)
         
-        attn1 = F.interpolate(attn1_out, size=attn_sizes[1], mode='bilinear')
-        attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[1], mode='bilinear')
-        attn1 = attn1 + attn_maps[1]
-        
-        attn_input1 = torch.cat([attn1, layers[2]], dim=1)
-        attn2_out = self.aggregator1(attn_input1) + attn_input1
-        attn2_out = self.proj[1](attn2_out)
-
-
-        
-        attn2 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
-        attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[2], mode='bilinear')
+        attn2 = F.interpolate(attn3_out, size=attn_sizes[1], mode='bilinear')
+        attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear')
         attn2 = attn2 + attn_maps[2]
         
-        attn_input2 = torch.cat([attn2, layers[1]], dim=1)
-        attn3_out = self.aggregator2(attn_input2) + attn_input2
-        attn3_out = self.proj[2](attn3_out)
+        attn_input2 = torch.cat([attn2, layers[2]], dim=1)
+        attn2_out = self.aggregator1(attn_input2) + attn_input2
+        attn2_out = self.proj[2](attn2_out)
+
+        attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
+        attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear')
+        attn1 = attn1 + attn_maps[1]
+        
+        attn_input1 = torch.cat([attn1, layers[1]], dim=1)
+        attn1_out = self.aggregator1(attn_input1) + attn_input1
+        attn1_out = self.proj[1](attn1_out)
         
         
-        attn3 = F.interpolate(attn3_out, size=attn_sizes[3], mode='bilinear')
-        attn_maps[3] = F.interpolate(attn_maps[3], size=attn_sizes[3], mode='bilinear')
-        attn3 = attn3 + attn_maps[3]
+        attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')
+        attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear')
+        attn0 = attn0 + attn_maps[0]
         
-        attn_input3 = torch.cat([attn3, layers[0]], dim=1)
-        attn4_out = self.aggregator3(attn_input3) + attn_input3
-        attn4_out = self.proj[3](attn4_out)
+        attn_input0 = torch.cat([attn0, layers[0]], dim=1)
+        attn0_out = self.aggregator3(attn_input0) + attn_input0
+        attn0_out = self.proj[0](attn0_out)
         
-        path_4 = self.depth_head0(attn1_out)
-        path_3 = self.depth_head1(attn2_out)
-        path_2 = self.depth_head2(attn3_out)
-        path_1 = self.depth_head3(attn4_out)
+        path_4 = self.depth_head3(attn3_out)
+        path_3 = self.depth_head2(attn2_out)
+        path_2 = self.depth_head1(attn1_out)
+        path_1 = self.depth_head0(attn0_out)
         
         if self.with_pose:
             layers_0 = rearrange(layers[0],'b c nh nw -> b (nh nw) c')
             B = layers_0.shape[0]
-            pose_feat_ctxt = self.pose_agg(layers_0,corr=attn4_out).reshape(B,-1)
-            pose_latent_ctxt = self.pose_regressor(pose_feat_ctxt)[:,:128]
+            pose_feat_ctxt = self.pose_agg(layers_0,corr=attn3,intrinsics=intrinsics).reshape(B,-1)
+            pose_latent_ctxt = self.pose_regressor(pose_feat_ctxt)
             
             rot_ctxt, tran_ctxt = self.rotation_regressor(pose_latent_ctxt), self.translation_regressor(pose_latent_ctxt)# Bxn_views x 9, Bxn_views x 3 
             R_ctxt = self.r6d2mat(rot_ctxt)[:, :3, :3] 

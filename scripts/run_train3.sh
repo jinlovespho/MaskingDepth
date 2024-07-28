@@ -13,7 +13,7 @@ DATA_ARGS="
 TRAINING_ARGS="
 --num_epoch 20
 --batch_size 8
---learning_rate 1e-4
+--learning_rate 5e-5
 --num_workers 4
 --seed 41
 "
@@ -36,8 +36,6 @@ MODEL_ARGS="
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
 --attn_agg
 --softmax_attn
---encoder_freeze
---decoder_freeze
 --residual
 "
 
@@ -48,7 +46,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggtest_softmax_encdecfreeze_resi
+    --wandb_exp_name hg_croco_basebase_attnaggtest_softmax_resi_5e5_addnorm
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

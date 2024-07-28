@@ -5,6 +5,7 @@ wandb/
 
 *.pth
 *.png
+*.jpg
 
 
 

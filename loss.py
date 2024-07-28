@@ -6,6 +6,7 @@ from utils import *
 
 import sys
 import pdb
+import random
 
 class ForkedPdb(pdb.Pdb):
     """A Pdb subclass that may be used
@@ -52,8 +53,13 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
         #forward pose_net
         if not train_args.with_pose:
             fa,ft,ba,bt = pose_forward(inputs, model)
+            front_pose, back_pose = None, None
+        else:
+            front_pose = model_outs['pose']
+            back_pose = None
+            fa,ft,ba,bt = None, None, None, None
 
-        recon_loss, mask, _,smooth_loss = compute_selfsup_mono_loss(model_outs, inputs, train_args, fa, ft,ba,bt)
+        recon_loss, mask, _,smooth_loss = compute_selfsup_mono_loss(model_outs, inputs, train_args, fa, ft,ba,bt, front_pose=front_pose, back_pose=back_pose)
         recon_losses.append(recon_loss)
         smooth_losses.append(smooth_loss)
         
@@ -80,7 +86,17 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
 
 def model_forward(inputs, model, train_args, mode):
     if train_args.model_info == 'croco':
-        outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], 1)      
+        if mode == TRAIN:
+            target = inputs['color_aug',0,0]
+            source = inputs['color_aug',-1,0]
+            for batch in range(source.shape[0]):
+                rand_num = random.random()
+                if rand_num < train_args.zero_aug:
+                    source[batch] = target[batch]
+                    
+            outputs = model['depth'](target, source, 1, intrinsics=inputs['K',0])
+        else:
+            outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], 1, intrinsics=inputs['K',0])      
     else:
         outputs = model['depth'](inputs, train_args, mode)
     return outputs
@@ -109,7 +125,7 @@ def compute_sup_loss(pred_depth, gt_depth, non_zero_mask):
         loss = torch.abs(pred_depth[non_zero_mask] - gt_depth.detach()[non_zero_mask]).mean()
     return loss
 
-def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back_angle, back_trans):
+def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back_angle, back_trans, front_pose=None, back_pose=None):
 # def compute_selfsup_mono_loss(label_pred_depth, label, train_args, angle, trans, back_angle, back_trans, scale_disp):
     
     loss = 0 
@@ -125,8 +141,12 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
     project_3d = utils.Project3D(train_args.batch_size, train_args.re_height, train_args.re_width)
     project_3d.to(device)
 
-    front_T = utils.transformation_from_parameters(angle[:, 0], trans[:, 0], invert=(-1<0))
-    back_T = utils.transformation_from_parameters(back_angle[:,0],back_trans[:,0],invert=(1<0))
+    if not train_args.with_pose:
+        front_T = utils.transformation_from_parameters(angle[:, 0], trans[:, 0], invert=(-1<0))
+        back_T = utils.transformation_from_parameters(back_angle[:,0],back_trans[:,0],invert=(1<0))
+    else:
+        front_T = front_pose
+        back_T = back_pose
 
     for scale in range(4):
         reprojection_losses = []
@@ -145,8 +165,9 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
         front_repoj_image = F.grid_sample(inputs['color',-1,0],pix_coords.to(torch.float32),padding_mode="border")
         
         ## front to back
-        cam_points = backproject_depth(depth, inputs['inv_K',0])
-        pix_coords = project_3d(cam_points, inputs['K',0], back_T)
+        if train_args.use_future_frame:
+            cam_points = backproject_depth(depth, inputs['inv_K',0])
+            pix_coords = project_3d(cam_points, inputs['K',0], back_T)
 
         back_repoj_image = F.grid_sample(inputs['color',1,0],pix_coords.to(torch.float32),padding_mode="border")
         

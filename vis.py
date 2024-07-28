@@ -7,7 +7,7 @@ import wandb
 import numpy as np
 from PIL import Image 
 
-import vis_initialize
+import initialize
 import utils
 import loss
 from vis_eval import visualize, eval_metric, get_eval_dict
@@ -44,10 +44,22 @@ def get_train_args():
     # Loss args
     parser.add_argument('--training_loss',  type=str)
     parser.add_argument('--use_future_frame',   action='store_true')
+    parser.add_argument("--smooth_weight", type=float, default=1e-3)
     # Model args 
     parser.add_argument('--model_info',             type=str)
+    parser.add_argument('--vit_type',               type=str,   default='vit_base')
+    parser.add_argument('--pretrained_weight',      type=str)
     parser.add_argument('--pretrained_weight_path', type=str)
-    parser.add_argument('--load_weight_path',       type=str)
+    parser.add_argument('--pretrained_path', type=str)
+    parser.add_argument('--attn_agg', action="store_true")
+    parser.add_argument('--softmax_attn', action="store_true")
+    parser.add_argument('--with_pose', action="store_true")
+    parser.add_argument('--encoder_freeze', action='store_true')
+    parser.add_argument('--decoder_freeze', action='store_true')
+    parser.add_argument('--residual', action='store_true')
+    parser.add_argument('--single', action="store_true")
+    parser.add_argument('--zero_aug', type=float, default=0.0)
+    parser.add_argument('--load_weight_path',       type=str, default=None)
     # Save args 
     parser.add_argument("--epoch_save_freq", type=int, default=5)
     # Logging args 
@@ -80,13 +92,13 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     # set seed
-    vis_initialize.seed_everything(train_args.seed)
+    initialize.seed_everything(train_args.seed)
 
     # model_load
-    model, _ = vis_initialize.model_load(train_args, device)
+    model, _ = initialize.model_load(train_args, device)
     
     # data loader
-    train_ds, val_ds, train_loader, val_loader = vis_initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
+    train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
                                             
     # set wandb
     if train_args.log_tool == 'wandb':
@@ -95,42 +107,16 @@ if __name__ == "__main__":
                     config = train_args,
                     dir=train_args.log_path)
 
-
-    # load_weight_depth = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/depth.pth')
-    # load_weight_pose_enc = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/pose_encoder.pth')
-    # load_weight_pose_dec = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/pose_decoder.pth')
-
-    # is_load_depth = model['depth'].module.load_state_dict(load_weight_depth)
-    # is_load_pose_enc = model['pose_encoder'].module.load_state_dict(load_weight_pose_enc)
-    # is_load_pose_dec = model['pose_decoder'].module.load_state_dict(load_weight_pose_dec)
-    # print(is_load_depth)
-    # print(is_load_pose_enc)
-    # print(is_load_pose_dec)
-    
-    # breakpoint()
-    # model['depth'].state_dict().keys() 로 어디에 훅 걸어야 하는지 보기 
-    
     # set hooks to visualize cross attention maps in decoder
     ca1_names=[]
     ca1_modules=[]
     ca1_maps=[]
-    for name, module in model['depth'].model.named_modules():
+    for name, module in model['depth'].named_modules():
         if 'dec_blocks' in name and 'cross_attn.attn_drop' in name:
             ca1_names.append(name)
             ca1_modules.append(module)
             module.register_forward_hook(lambda m,i,o: ca1_maps.append(o.detach().cpu()) )
-    
-    # set hooks to visualize self attention maps in decoder
-    sa1_names=[]
-    sa1_modules=[]
-    sa1_maps=[]
-    for name, module in model['depth'].model.named_modules():
-        if 'dec_blocks' in name and 'cross_attn' not in name and 'attn.attn_drop' in name:
-            sa1_names.append(name)
-            sa1_modules.append(module)
-            module.register_forward_hook(lambda m,i,o: sa1_maps.append(o.detach().cpu()) )
-            
-            
+
     # validation
     with torch.no_grad():
         utils.model_mode(model,EVAL)
@@ -158,16 +144,13 @@ if __name__ == "__main__":
             img_curr = inputs['color',0,0]      # b 3 192 640
             img_prev = inputs['color',-1,0]
             
-            sa1_map = torch.stack(sa1_maps, dim=1)  # b 12 12 480 480
             ca1_map = torch.stack(ca1_maps, dim=1)  # b num_layer num_head N1 N2
             
-            sa1_maps.clear()
             ca1_maps.clear()
             
-            sa1_map = sa1_map.mean(dim=2)   # b 12 480 480
             ca1_map = ca1_map.mean(dim=2)   # b num_layer N1 N2
             
-            log_name=f'/media/dataset1/jinlovespho/log/mfdepth/vis/{train_args.model_info}/iter{k}'
+            log_name=f'.vis_attn/{train_args.model_info}/iter{k}'
             if not os.path.exists(log_name):
                 os.makedirs(log_name)
                 
@@ -185,7 +168,6 @@ if __name__ == "__main__":
                     
                     i_img_curr=img_curr[i].detach().cpu()  # 3 192 640
                     i_img_prev=img_prev[i].detach().cpu()
-                    i_sa1_map=sa1_map[i].detach().cpu()    # 12 480 480
                     i_ca1_map=ca1_map[i].detach().cpu()    # num_layer N1 N2
                     
                     vis_pred_depth = pred_depth_orig[i].squeeze().cpu().numpy()     # 1 375 1242
@@ -210,28 +192,20 @@ if __name__ == "__main__":
                     cv2.imwrite(f'{log_name2}/aaa_tmp_curr{i}.jpg', i_img_curr_query) 
                     cv2.imwrite(f'{log_name2}/{file_name}', i_img_curr_query)  
                     vis_pred_depth.save(f'{log_name2}/{file_name}_pred_depth.jpg')
-
+                    i_ca1_map[:,:,441] = 0
                     for j in range(12):     # layer별
-                        j_sa1_map=i_sa1_map[j]  # 480 480
                         j_ca1_map=i_ca1_map[j]  # N1 N2 
                         
-                        # save_image(j_sa1_map, f'{log_name}/{i}_sa_map_layer{j}.jpg')  # 잘 안보임
-                        # save_image(j_ca1_map, f'{log_name}/{i}_ca_map_layer{j}.jpg')
-                        # save_image(j_sa1_map, f'{log_name}/{i}_layer{j}_sa_map_n.jpg', normalize=True)
-                        # save_image(j_ca1_map, f'{log_name}/{i}_layer{j}_ca_map_n.jpg', normalize=True)
                         
-                        vis_tkn_sa1 = j_sa1_map[tkn_vis_idx]    # 480
                         vis_tkn_ca1 = j_ca1_map[tkn_vis_idx]
+                        
 
-                        interp_vis_tkn_sa1 = F.interpolate(vis_tkn_sa1.view(12,40).unsqueeze(dim=0).unsqueeze(dim=0), size=(192,640), mode='bilinear', align_corners=True)  # 1 1 192 640
                         interp_vis_tkn_ca1 = F.interpolate(vis_tkn_ca1.view(12,40).unsqueeze(dim=0).unsqueeze(dim=0), size=(192,640), mode='bilinear', align_corners=True)
                         
                         # normalize attn map weight to [0,1]
-                        interp_vis_tkn_sa1 = (interp_vis_tkn_sa1 - interp_vis_tkn_sa1.min()) / (interp_vis_tkn_sa1.max() - interp_vis_tkn_sa1.min())
                         interp_vis_tkn_ca1 = (interp_vis_tkn_ca1 - interp_vis_tkn_ca1.min()) / (interp_vis_tkn_ca1.max() - interp_vis_tkn_ca1.min())
                         
                         # show attention map on previous image
-                        result_sa = show_mask_on_image(i_img_prev.permute(1,2,0), interp_vis_tkn_sa1.squeeze())    # 192 640 3
                         result_ca = show_mask_on_image(i_img_prev.permute(1,2,0), interp_vis_tkn_ca1.squeeze())    # 192 640 3
                         
                         # cv2.imwrite(f'{log_name}/iter{k}_batch{i}_h{vis_idx_h}_w{vis_idx_w}_img_prev_SA_layer{j}.jpg', result_sa)

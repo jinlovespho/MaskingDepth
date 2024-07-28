@@ -26,7 +26,6 @@ DEPTH_ARGS="
 LOSS_ARGS="
 --training_loss selfsupervised_img_recon
 --use_future_frame
---smooth_weight 1e-3
 "
 
 MODEL_ARGS="
@@ -34,9 +33,6 @@ MODEL_ARGS="
 --vit_type vit_base
 --pretrained_weight vit_base_384
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
---attn_conv4d
---softmax_attn
---residual
 --zero_aug 0.33
 "
 
@@ -47,7 +43,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggfeature_zeroaug33_init002
+    --wandb_exp_name hg_croco_multi_zeroaug
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

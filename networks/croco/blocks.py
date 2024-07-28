@@ -167,7 +167,7 @@ class CrossAttention(nn.Module):
         
         if self.softmax_attn:
             attn_tmp = attn.clone().detach()
-            attn_tmp[:,:,:,0] = 0
+            attn_tmp[:,:,:,441] = 0
             
         
         attn = self.attn_drop(attn)

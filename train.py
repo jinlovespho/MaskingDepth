@@ -53,6 +53,8 @@ def get_train_args():
     parser.add_argument('--decoder_freeze', action='store_true')
     parser.add_argument('--residual', action='store_true')
     parser.add_argument('--single', action="store_true")
+    parser.add_argument('--zero_aug', type=float, default=0.0)
+    parser.add_argument('--attn_conv4d', action="store_true")
     
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
@@ -66,7 +68,7 @@ def get_train_args():
     parser.add_argument('--log_path',         type=str,     default='./path/to/log')
     # Etc args
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--load_weight_path', type=str)
+    parser.add_argument('--load_weight_path', type=str, default=None)
     args = parser.parse_args()
     return args
 

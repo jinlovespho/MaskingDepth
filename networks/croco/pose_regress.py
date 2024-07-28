@@ -239,9 +239,10 @@ def get_positional_encodings(B, N, intrinsics=None):
         use [x'/w', y'/w'] instead of x,y for coords. Where [x',y',w'] = K^{-1} [x,y,1]
         '''
       
-        fx, fy, cx, cy = intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3]
+        # fx, fy, cx, cy = intrinsics[0], intrinsics[1], intrinsics[2], intrinsics[3]
+        fx, fy, cx, cy = intrinsics[0,0,0], intrinsics[0,1,1], intrinsics[0,0,2], intrinsics[0,1,2]
 
-        if cx[0] * cy[0] == 0:
+        if cx * cy == 0:
             print('principal point is in upper left, not setup for this right now.')
             import pdb; pdb.set_trace()
 
@@ -262,13 +263,12 @@ def get_positional_encodings(B, N, intrinsics=None):
         K[:,0,2] = cx_normalized.squeeze()
         K[:,1,2] = cy_normalized.squeeze()
         K[:,2,2] = 1
-    
         Kinv = torch.inverse(K)
         for j in range(h):
             for k in range(w):
                 w1, w2, w3 = torch.split(Kinv @ torch.tensor([xs[k], ys[j], 1]), 1, dim=1)
-                p3[:, int(k * w + j)] = w2.squeeze() / w3.squeeze() 
-                p4[:, int(k * w + j)] = w1.squeeze() / w3.squeeze() 
+                p3[:, int(k * h + j)] = w2.squeeze() / w3.squeeze() 
+                p4[:, int(k * h + j)] = w1.squeeze() / w3.squeeze() 
 
     p2 = p3 * p4
     p1 = p4 * p4
@@ -313,7 +313,7 @@ class CrossAttention(nn.Module):
         if not self.noess:
             attn_fundamental_1 = corr.reshape(B, 480, N).permute(0,2,1).reshape(8,7680,12,40)
             attn_fundamental_1 = F.interpolate(attn_fundamental_1, size=(48,160), mode='bilinear')
-            attn_fundamental_1 = attn_fundamental_1.reshape(B, N, 7680)
+            attn_fundamental_1 = attn_fundamental_1.reshape(B, N, 7680).transpose(-2,-1)
             
             positional = get_positional_encodings(B, N, intrinsics=intrinsics).cuda() # shape B,N,6
               
@@ -322,7 +322,7 @@ class CrossAttention(nn.Module):
             
             fundamental_1 = (v1.transpose(-2, -1) @ attn_fundamental_1) @ v1
 
-            fundamental_1 = fundamental_1.reshape(B, int(C+6), int((C+6))).transpose(-2,-1)           
+            fundamental_1 = fundamental_1.reshape(B, int(C+6), int((C+6)))#.transpose(-2,-1)           
             # fundamental is C/3+6,C/3+6 (for each head)
 
             fundamental_1 = self.proj_fundamental(fundamental_1)
