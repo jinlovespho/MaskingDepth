@@ -31,11 +31,12 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
     losses = {}
     total_loss = 0
     
-    orig_h, orig_w = inputs['depth_gt'].shape[-2:]
+    orig_h, orig_w = inputs['depth_gt'].shape[-2:]  # 375 1242
     gt_depth = inputs['depth_gt']
     
     # forward pass 
-    model_outs = model_forward(inputs, model, train_args, mode)  # (b,1,192,640)
+    model_outs = model_forward(inputs, model, train_args, mode)  
+    
     # supervised training
     if train_args.training_loss == 'supervised_depth':
         # breakpoint()
@@ -85,6 +86,11 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
 
 
 def model_forward(inputs, model, train_args, mode):
+    img1 = inputs['color',0,0]
+    img2 = inputs['color',-1,0]
+    outputs = model['depth'](img1,img2)
+    return outputs
+    
     if train_args.model_info == 'croco':
         if mode == TRAIN:
             target = inputs['color_aug',0,0]
@@ -103,12 +109,16 @@ def model_forward(inputs, model, train_args, mode):
 
 def pose_forward(inputs, model):
     
-    # ForkedPdb().set_trace()
-    pose_inputs = [model["pose_encoder"](torch.cat( [inputs['color',-1,0], inputs['color',0,0] ], 1))]
-    fa,ft = model['pose_decoder'](pose_inputs)
+    img_curr = inputs['color',0,0]
+    img_prev = inputs['color',-1,0]
+    img_fut = inputs['color',1,0]
     
-    pose_inputs = [model["pose_encoder"](torch.cat( [inputs['color',0,0], inputs['color',1,0] ], 1))]
-    ba,bt = model['pose_decoder'](pose_inputs)
+    # ForkedPdb().set_trace()
+    pose_inputs = [model["pose_enc"](torch.cat( [img_prev, img_curr], 1))]
+    fa,ft = model['pose_dec'](pose_inputs)
+    
+    pose_inputs = [model["pose_enc"](torch.cat( [img_curr, img_fut], 1))]    
+    ba,bt = model['pose_dec'](pose_inputs)
 
     return fa,ft,ba,bt
 

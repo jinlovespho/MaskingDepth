@@ -308,8 +308,25 @@ class MonoDataset(data.Dataset):
                 inputs[("K", scale)] = torch.from_numpy(K)
                 inputs[("inv_K", scale)] = torch.from_numpy(inv_K)
                         
+            # JINLOVESPHO
             if do_color_aug:
-                color_aug = transforms.ColorJitter( self.brightness, self.contrast, self.saturation, self.hue)
+
+                rnd_idx, b, c, s, h = transforms.ColorJitter.get_params(self.brightness, self.contrast, self.saturation, self.hue)
+            
+                trans_lst=[]
+                
+                for idx in rnd_idx:
+                    if idx==0 and b is not None:
+                        trans_lst.append(lambda img: torchvision.transforms.functional.adjust_brightness(img, b))
+                    elif idx==1 and c is not None:
+                        trans_lst.append(lambda img: torchvision.transforms.functional.adjust_contrast(img, c))
+                    elif idx==2 and s is not None:
+                        trans_lst.append(lambda img: torchvision.transforms.functional.adjust_saturation(img, s))
+                    elif idx==3 and h is not None:
+                        trans_lst.append(lambda img: torchvision.transforms.functional.adjust_hue(img, h))
+
+                color_aug = transforms.Compose(trans_lst)
+
             else:
                 color_aug = (lambda x: x)
 

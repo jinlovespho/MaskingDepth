@@ -20,30 +20,30 @@ EVAL  = 1
 def get_train_args():
     parser = argparse.ArgumentParser(description='args')
     # Data args 
-    parser.add_argument('--data_path',      type=str,   default='/path/to/data')
-    parser.add_argument("--dataset",        type=str,   choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test", 'kitti_depth_multiframe'])
-    parser.add_argument("--splits",         type=str,   choices=["eigen_zhou", "eigen_full", "odom", "benchmark", "eigen_temp"])
-    parser.add_argument('--img_ext',        type=str)
-    parser.add_argument('--re_height',      type=int,   default=192)
-    parser.add_argument('--re_width',       type=int,   default=640)   
+    parser.add_argument('--data_path', type=str, default='/path/to/data')
+    parser.add_argument("--dataset", type=str, choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test", 'kitti_depth_multiframe'])
+    parser.add_argument("--splits", type=str, choices=["eigen_zhou", "eigen_full", "odom", "benchmark", "eigen_temp"])
+    parser.add_argument('--img_ext', type=str)
+    parser.add_argument('--re_height', type=int, default=192)
+    parser.add_argument('--re_width', type=int, default=640)   
     # Training args 
-    parser.add_argument('--num_epoch',      type=int)  
-    parser.add_argument('--batch_size',     type=int)
-    parser.add_argument('--backbone_lr',    type=float)
-    parser.add_argument('--learning_rate',             type=float) 
-    parser.add_argument('--num_workers',    type=int) 
-    parser.add_argument('--seed',           type=int)
+    parser.add_argument('--num_epoch', type=int)  
+    parser.add_argument('--batch_size', type=int)
+    parser.add_argument('--lr', type=float) 
+    parser.add_argument('--lr_scheduler_step_size', type=int)
+    parser.add_argument('--num_workers', type=int) 
+    parser.add_argument('--seed', type=int)
     # Depth args 
-    parser.add_argument('--min_depth',      type=float,     default=0.1)
-    parser.add_argument('--max_depth',      type=float,     default=80.0)
+    parser.add_argument('--min_depth', type=float, default=0.1)
+    parser.add_argument('--max_depth', type=float, default=80.0)
     # Loss args
-    parser.add_argument('--training_loss',  type=str)
-    parser.add_argument('--use_future_frame',   action='store_true')
+    parser.add_argument('--training_loss', type=str)
+    parser.add_argument('--use_future_frame', action='store_true')
     parser.add_argument("--smooth_weight", type=float, default=1e-3)
     # Model args 
-    parser.add_argument('--model_info',             type=str)
-    parser.add_argument('--vit_type',               type=str,   default='vit_base')
-    parser.add_argument('--pretrained_weight',      type=str)
+    parser.add_argument('--model_info', type=str)
+    parser.add_argument('--vit_type', type=str,   default='vit_base')
+    parser.add_argument('--pretrained_weight', type=str)
     parser.add_argument('--pretrained_weight_path', type=str)
     parser.add_argument('--pretrained_path', type=str)
     parser.add_argument('--attn_agg', action="store_true")
@@ -56,22 +56,21 @@ def get_train_args():
     parser.add_argument('--zero_aug', type=float, default=0.0)
     parser.add_argument('--attn_conv4d', action="store_true")
     
-    parser.add_argument('--num_prev_frame',         type=int)
-    parser.add_argument('--cross_attn_depth',       type=int)
-    parser.add_argument('--masking_ratio',          type=float)
+    parser.add_argument('--num_prev_frame', type=int)
+    parser.add_argument('--cross_attn_depth', type=int)
+    parser.add_argument('--masking_ratio', type=float)
     # Save args 
     parser.add_argument("--epoch_save_freq", type=int, default=5)
     # Logging args 
-    parser.add_argument('--log_tool',         type=str)
-    parser.add_argument('--wandb_proj_name',  type=str)
-    parser.add_argument('--wandb_exp_name',   type=str)
-    parser.add_argument('--log_path',         type=str,     default='./path/to/log')
+    parser.add_argument('--log_tool', type=str)
+    parser.add_argument('--wandb_proj_name', type=str)
+    parser.add_argument('--wandb_exp_name', type=str)
+    parser.add_argument('--log_path', type=str, default='./path/to/log')
     # Etc args
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--load_weight_path', type=str, default=None)
     args = parser.parse_args()
     return args
-
 
 if __name__ == "__main__":
     
@@ -79,59 +78,33 @@ if __name__ == "__main__":
     train_args = get_train_args()
     train_args.frame_ids=[0,-1,1]
     train_args.scales=[0,1,2,3]
-     
+
     # set device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     # set seed
     initialize.seed_everything(train_args.seed)
 
+    # data loader
+    train_ds, val_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
+          
     # model_load
     model, params_to_train = initialize.model_load(train_args, device)
     
-    #optimizer & scheduler
-    if train_args.model_info != 'croco':
-        encode_index = len(list(model['depth'].module.encoder.parameters()))
-        optimizer = torch.optim.Adam([{"params": params_to_train[:encode_index], "lr": 1e-5}, 
-                                    {"params": params_to_train[encode_index:]}  ], float(train_args.learning_rate))
-    else:
-        pretrained_params, other_params = [], []
-        for name, param in model['depth'].named_parameters():
-            if 'enc_blocks' in name or 'dec_blocks' in name:
-                pretrained_params.append(param)
-            # if 'enc_blocks' in name:
-                # pretrained_params.append(param)
-            else:
-                other_params.append(param)
-        
-        if not train_args.with_pose:
-            other_params += model['pose_encoder'].parameters()
-            other_params += model['pose_decoder'].parameters()
-            
-        for name,param in model['depth'].named_parameters():
-            if 'enc_blocks' in name:
-                if train_args.encoder_freeze:
-                    param.requires_grad = False
-            if 'dec_blocks' in name:
-                if train_args.decoder_freeze:
-                    param.requires_grad = False     
-        
-        optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
-                                      {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
-    # data loader
-    train_ds, valv_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
-                                            
-    # set wandb
+    # set optimizer and scheduler
+    optimizer = torch.optim.Adam(params_to_train, train_args.lr)
+    # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, train_args.lr_scheduler_step_size, 0.1)     
+                                  
+    # set logging tool (wandb)
     if train_args.log_tool == 'wandb':
         wandb.init( project = train_args.wandb_proj_name,
                     name = train_args.wandb_exp_name,
                     config = train_args,
                     dir=train_args.log_path)
 
-    # train and val
-    step = 0
+    # epoch loop
     for epoch in range(train_args.num_epoch):
-
+        
         # set train
         utils.model_mode(model,TRAIN)  
         

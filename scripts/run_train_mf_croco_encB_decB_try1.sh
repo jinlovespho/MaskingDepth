@@ -1,7 +1,7 @@
 
 
 DATA_ARGS="
---data_path /home/cvlab08/projects/data/KITTI
+--data_path /media/data1/KITTI
 --dataset kitti
 --splits eigen_zhou
 --img_ext .jpg 
@@ -33,7 +33,7 @@ MODEL_ARGS="
 --model_info croco
 --vit_type vit_base
 --pretrained_weight vit_base_384
---pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
+--pretrained_path ./pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth
 --attn_conv4d
 --softmax_attn
 --residual
@@ -47,7 +47,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggfeature_zeroaug33_init002
+    --wandb_exp_name pho_server5_gpu3_kitti_croco_encB_decB
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 
@@ -56,7 +56,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=1   python ./train.py        \
+CUDA_VISIBLE_DEVICES=3   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \
