@@ -139,8 +139,8 @@ except ImportError:
             
             # JINLOVESPHO
             pos1d=pos1d.cuda()
-            cos=cos.cuda()
-            sin=sin.cuda()
+            # cos=cos.cuda()
+            # sin=sin.cuda()
             
             cos = torch.nn.functional.embedding(pos1d, cos)[:, None, :, :]
             sin = torch.nn.functional.embedding(pos1d, sin)[:, None, :, :]

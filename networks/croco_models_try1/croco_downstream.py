@@ -7,7 +7,7 @@
 
 import torch
 
-from .croco import CroCoNet
+from .croco import CAMapCroCoNet
 
 
 def croco_args_from_ckpt(ckpt):
@@ -64,7 +64,7 @@ class CroCoDownstreamMonocularEncoder(CroCoNet):
         return self.head(out, img_info)
         
         
-class CroCoDownstreamBinocular(CroCoNet):
+class CAMapCroCoDownstreamBinocular(CAMapCroCoNet):
 
     def __init__(self,
                  head,
@@ -74,7 +74,7 @@ class CroCoDownstreamBinocular(CroCoNet):
           and a dictionary img_info containing 'width' and 'height' keys
         The head is setup with the croconet arguments in this init function
         """
-        super(CroCoDownstreamBinocular, self).__init__(**kwargs)
+        super(CAMapCroCoDownstreamBinocular, self).__init__(**kwargs)
         head.setup(self)
         self.head = head
 

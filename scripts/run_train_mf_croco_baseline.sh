@@ -12,7 +12,7 @@ DATA_ARGS="
 
 TRAINING_ARGS="
     --num_epoch 20
-    --batch_size 16
+    --batch_size 8
     --lr 1e-4
     --lr_scheduler_step_size 15
     --num_workers 4
@@ -42,7 +42,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu123_kitti_croco_encB_decB_baseline
+    --wandb_exp_name pho_server5_gpu3_kitti_croco_encB_decB_baseline
     --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
@@ -51,7 +51,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=1,2,3  python ./train.py        \
+CUDA_VISIBLE_DEVICES=3  python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

@@ -103,6 +103,58 @@ def model_load(train_args, device):
         params_to_train.append( {'params':dec_params, 'lr':train_args.lr*0.1} )
         params_to_train.append( {'params':else_params, 'lr':train_args.lr})
         
+    
+    elif train_args.model_info == 'mf_croco_try1':
+        # croco models
+        from networks.croco_models_try1.croco_downstream import CAMapCroCoDownstreamBinocular, croco_args_from_ckpt
+        from networks.croco_models_try1.head_downstream import CAMapPixelwiseTaskWithDPT    
+        from networks.croco_models_try1.pos_embed import interpolate_pos_embed    
+        # monodepth2 pose models
+        from networks.monodepth2_models.resnet_encoder import ResnetEncoder
+        from networks.monodepth2_models.pose_decoder import PoseDecoder
+        
+        # load models
+        ckpt = torch.load(train_args.pretrained_weight_path, 'cpu')
+        croco_args = croco_args_from_ckpt(ckpt)
+        croco_args['img_size'] = (train_args.re_height, train_args.re_width)    # 192 640
+        print('CROCO ARGS INFO: '+str(croco_args))
+        num_channels = 1
+        print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
+        head = CAMapPixelwiseTaskWithDPT()
+        head.num_channels = num_channels
+        breakpoint()
+        model['depth'] = CAMapCroCoDownstreamBinocular(head, **croco_args)
+        interpolate_pos_embed(model['depth'], ckpt['model'])
+        msg = model['depth'].load_state_dict(ckpt['model'], strict=False)
+        # print(msg)
+        model["pose_enc"] = ResnetEncoder(18,True,num_input_images=2 )
+        model["pose_dec"] = PoseDecoder( model["pose_enc"].num_ch_enc, num_input_features=1, num_frames_to_predict_for=2)
+        
+        # set trainable params
+        enc_params, enc_names = [], []
+        dec_params, dec_names = [], []
+        else_params, else_names = [], []
+        for name, param in model['depth'].named_parameters():
+            if 'enc_blocks' in name or 'enc_norm' in name:
+                enc_params.append(param)
+                enc_names.append(name)
+            elif 'dec_blocks' in name or 'decoder_embed' in name or 'dec_norm' in name:
+                dec_params.append(param)
+                dec_names.append(name)
+            else:
+                else_params.append(param)
+                else_names.append(name)
+        
+        depth_params=list(model['depth'].parameters())
+        assert len(depth_params) == len(enc_params) + len(dec_params) + len(else_params), 'CHECK TRAINABLE PARAMS !!'
+        
+        else_params+=model['pose_enc'].parameters()
+        else_params+=model['pose_dec'].parameters()
+        
+        params_to_train.append( {'params':enc_params, 'lr':train_args.lr*0.1} )
+        params_to_train.append( {'params':dec_params, 'lr':train_args.lr*0.1} )
+        params_to_train.append( {'params':else_params, 'lr':train_args.lr})
+        
     else:
         print('NO MODEL TO LOAD')
         breakpoint()
