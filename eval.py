@@ -382,7 +382,67 @@ def visualize(inputs, pred_depth, model_outs, train_args, sample_num=4):
             vis2.append(wandb.Image(vis_curr_from_fut, caption="Curr from Fut"))
             
             
-        wandb_eval_dict['vis1'] = vis1
-        wandb_eval_dict['vis2'] = vis2
+        wandb_eval_dict['tt_vis1'] = vis1
+        wandb_eval_dict['tt_vis2'] = vis2
+        
+        wandb.log(wandb_eval_dict)
+        
+        
+def visualize2(inputs, pred_depth, model_outs, train_args, sample_num=4):
+    b = pred_depth.shape[0]
+    sample_num = b if b < sample_num else sample_num
+    
+    orig_h, orig_w = inputs['depth_gt'].shape[-2:]
+       
+    input_curr_img = F.interpolate(inputs['color',0,0], size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+    
+    for i in range(sample_num):
+        wandb_eval_dict = {}
+        vis1 = []
+        vis2 = []
+
+        #rgb image 
+        vis_curr_img = input_curr_img[i]
+        vis_curr_img *= 255
+        vis1.append(wandb.Image(vis_curr_img, caption="Curr Input Image"))
+        
+        # pred depth
+        vis_pred_depth = pred_depth[i].squeeze().cpu().numpy() 
+        vmax = np.percentile(vis_pred_depth, 95)
+        normalizer = mpl.colors.Normalize(vmin=vis_pred_depth.min(), vmax=vmax)
+        mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+        colormapped_pred_depth = (mapper.to_rgba(vis_pred_depth)[:, :, :3] * 255).astype(np.uint8)
+        vis_pred_depth = pil.fromarray(colormapped_pred_depth)
+        vis1.append(wandb.Image(vis_pred_depth, caption="Pred Depth"))
+        
+        # gt_depth
+        gt_depth = inputs['depth_gt'][i].squeeze().cpu().numpy() 
+        vmax = np.percentile(gt_depth, 95)
+        normalizer = mpl.colors.Normalize(vmin=gt_depth.min(), vmax=vmax)
+        mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+        colormapped_gt_depth = (mapper.to_rgba(gt_depth)[:, :, :3] * 255).astype(np.uint8)
+        gt_depth = pil.fromarray(colormapped_gt_depth)
+        vis1.append(wandb.Image(gt_depth, caption="GT Depth"))
+  
+        
+        if train_args.training_loss == 'selfsupervised_img_recon':
+            
+            # resize to orig size
+            vis_curr_from_prev = F.interpolate(model_outs['reproj_img_from_prev'], size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+            vis_curr_from_fut  = F.interpolate(model_outs['reproj_img_from_fut'], size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+            
+            # curr_img from prev_img 
+            vis_curr_from_prev = vis_curr_from_prev[i]
+            vis_curr_from_prev *= 255
+            vis2.append(wandb.Image(vis_curr_from_prev, caption="Curr from Prev"))
+            
+            # curr_img from future_img
+            vis_curr_from_fut = vis_curr_from_fut[i]
+            vis_curr_from_fut *= 255
+            vis2.append(wandb.Image(vis_curr_from_fut, caption="Curr from Fut"))
+            
+            
+        wandb_eval_dict['tt_1_vis1'] = vis1
+        wandb_eval_dict['tt_1_vis2'] = vis2
         
         wandb.log(wandb_eval_dict)

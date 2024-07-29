@@ -4,7 +4,7 @@
 # (t,t) and (t,t-1)
 
 DATA_ARGS="
-    --data_path /mnt/ssd2/dataset/KITTI
+    --data_path /media/data1/KITTI
     --dataset kitti
     --splits eigen_zhou
     --img_ext .jpg 
@@ -43,10 +43,10 @@ SAVE_ARGS="
 "
 
 LOGGING_ARGS="
-    --log_tool wandba
+    --log_tool wandb
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu0_kitti_croco_encB_decB_try2
-    --log_path /mnt/ssd2/dataset/jinlovespho/aaai_log
+    --wandb_exp_name pho_server5_gpu0123_kitti_croco_encB_decB_try2
+    --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
 ETC_ARGS="
@@ -54,7 +54,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=0  python ./train.py        \
+CUDA_VISIBLE_DEVICES=0,1,2,3  python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

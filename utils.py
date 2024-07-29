@@ -12,6 +12,8 @@ import torch.nn.functional as F
 
 from kernels import get_spatial_gradient_kernel2d, normalize_kernel2d
 
+import wandb
+
 
 def readlines(filename):
     """Read all the lines in a text file and return as a list
@@ -238,11 +240,24 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
 
 
 def compute_twice_depth_loss(depth1, depth2):
-    depth_abs_rel = torch.mean(torch.abs(depth1 - depth2) / depth1)
-    return depth_abs_rel
+    thres_ratio=0.1
+    depth_diff = torch.abs(depth1 - depth2) / depth1    # b 1 192 640
+    
+    msk_in = depth_diff < thres_ratio
+    msk_out = depth_diff > thres_ratio
+    
+    depth_diff_dict={
+        'thres_ratio':thres_ratio,
+        'depth_diff_max':depth_diff[0].max().item(),
+        'depth_diff_min':depth_diff[0].min().item(),
+        'depth_diff_median':depth_diff[0].median().item(),
+        'msk_out ratio':msk_out[0].count_nonzero().item()/msk_out.numel()*100.0
+    }
+    
+    return msk_in, msk_out, depth_diff_dict
 
 
-def compute_reprojection_loss( pred, target):
+def compute_reprojection_loss(pred, target):
     """Computes reprojection loss between a batch of predicted and target images
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -8,7 +8,7 @@ import initialize
 import utils
 import loss
 import loss_twice
-from eval import visualize, eval_metric, get_eval_dict
+from eval import visualize, eval_metric, get_eval_dict, visualize2
 
 from torchvision.utils import save_image
 from networks.monodepth2_networks import compute_depth_losses
@@ -120,7 +120,7 @@ if __name__ == "__main__":
            
             if train_args.model_info == 'mf_croco_try2':
                 # train forward pass
-                total_loss, losses, model_outs = loss_twice.compute_loss_twice(inputs, model, train_args, TRAIN)
+                total_loss, losses, model_outs1, model_outs2 = loss_twice.compute_loss_twice(inputs, model, train_args, TRAIN)
             else:
                 total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
 
@@ -159,8 +159,13 @@ if __name__ == "__main__":
         with torch.no_grad():
             utils.model_mode(model,EVAL)
             eval_loss = 0
-            eval_error = []
-            pred_depths = []
+            
+            eval_error1 = []
+            pred_depths1 = []
+            
+            eval_error2 = []
+            pred_depths2 = []
+            
             gt_depths = []
 
             # val loop
@@ -174,23 +179,77 @@ if __name__ == "__main__":
                 for key, val in inputs.items():
                     if type(val) == torch.Tensor:   # not all inputs are tensors
                         inputs[key] = val.to(device)
-            
-                # val forward pass
-                total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
-                
+
+                # val forward pass 
+                if train_args.model_info == 'mf_croco_try2':
+                    total_loss, losses, pred_depth_orig1, pred_depth_orig2, model_outs1, model_outs2 = loss_twice.compute_loss_twice(inputs, model, train_args, EVAL)
+                else:
+                    total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
+
                 eval_loss += total_loss
                 
                 gt_depth = inputs['depth_gt']
-                pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
+                pred_depths1.extend(pred_depth_orig1.squeeze(1).detach().cpu().numpy())
+                pred_depths2.extend(pred_depth_orig2.squeeze(1).detach().cpu().numpy())
                 gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
             
-            eval_error = eval_metric(pred_depths, gt_depths, train_args)  
-            error_dict = get_eval_dict(eval_error)
-            error_dict["val_loss"] = eval_loss / len(val_loader)                
+            eval_error1 = eval_metric(pred_depths1, gt_depths, train_args)  
+            error_dict1 = get_eval_dict(eval_error1)
+            error_dict1["val_loss1"] = eval_loss / len(val_loader)     
+            
+            eval_error2 = eval_metric(pred_depths2, gt_depths, train_args)  
+            error_dict2 = get_eval_dict(eval_error2)
+            error_dict2["val_loss2"] = eval_loss / len(val_loader)             
 
             if train_args.log_tool == 'wandb':
-                error_dict["epoch"] = (epoch+1)
-                wandb.log(error_dict)
-                visualize(inputs, pred_depth_orig, model_outs, train_args)
+                error_dict1["epoch"] = (epoch+1)
+                wandb.log(error_dict1)
+                wandb.log(error_dict2)
+                visualize(inputs, pred_depth_orig1, model_outs1, train_args)
+                visualize2(inputs, pred_depth_orig2, model_outs2, train_args)
                 
     print('End of Epoch')
+    
+    
+    #     # validation
+    #     with torch.no_grad():
+    #         utils.model_mode(model,EVAL)
+    #         eval_loss = 0
+    #         eval_error = []
+    #         pred_depths = []
+    #         gt_depths = []
+
+    #         # val loop
+    #         tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_args.num_epoch}')
+    #         for i, inputs in enumerate(tqdm_val):
+                
+    #             total_loss = 0
+    #             losses = {}
+                
+    #             # move tensors to cuda
+    #             for key, val in inputs.items():
+    #                 if type(val) == torch.Tensor:   # not all inputs are tensors
+    #                     inputs[key] = val.to(device)
+
+    #             # val forward pass 
+    #             if train_args.model_info == 'mf_croco_try2':
+    #                 total_loss, losses, pred_depth_orig1, pred_depth_orig2, model_outs1, model_outs2 = loss_twice.compute_loss_twice(inputs, model, train_args, EVAL)
+    #             else:
+    #                 total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
+
+    #             eval_loss += total_loss
+                
+    #             gt_depth = inputs['depth_gt']
+    #             pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
+    #             gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
+            
+    #         eval_error = eval_metric(pred_depths, gt_depths, train_args)  
+    #         error_dict = get_eval_dict(eval_error)
+    #         error_dict["val_loss"] = eval_loss / len(val_loader)                
+
+    #         if train_args.log_tool == 'wandb':
+    #             error_dict["epoch"] = (epoch+1)
+    #             wandb.log(error_dict)
+    #             visualize(inputs, pred_depth_orig, model_outs, train_args)
+                
+    # print('End of Epoch')

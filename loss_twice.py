@@ -35,7 +35,7 @@ def compute_loss_twice(inputs, model, train_args, mode = TRAIN):
     gt_depth = inputs['depth_gt']
     
     # forward pass 
-    model_outs_1, model_outs_2 = model_forward_twice(inputs, model, train_args, mode)  
+    model_outs1, model_outs2 = model_forward_twice(inputs, model, train_args, mode)  
     
     # self-supervised training
     if train_args.training_loss == 'selfsupervised_img_recon': 
@@ -47,11 +47,11 @@ def compute_loss_twice(inputs, model, train_args, mode = TRAIN):
         fa1,ft1,ba1,bt1 = pose_forward(inputs, model)
         front_pose, back_pose = None, None
 
-        recon_loss1, mask1, _,smooth_loss1 = compute_selfsup_mono_loss_1(model_outs_1, inputs, train_args, fa1, ft1,ba1,bt1, front_pose=front_pose, back_pose=back_pose)
+        recon_loss1, mask1, _,smooth_loss1 = compute_selfsup_mono_loss_1(model_outs1, inputs, train_args, fa1, ft1,ba1,bt1, front_pose=front_pose, back_pose=back_pose)
         recon_losses1.append(recon_loss1)
         smooth_losses1.append(smooth_loss1)
         
-        pred_depth_orig1 = F.interpolate(model_outs_1['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
+        pred_depth_orig1 = F.interpolate(model_outs1['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
         
         losses['selfsup_loss1'] = torch.stack(recon_losses1).mean()
         losses['smooth_loss1'] = torch.stack(smooth_losses1).mean()
@@ -64,11 +64,11 @@ def compute_loss_twice(inputs, model, train_args, mode = TRAIN):
         fa2,ft2,ba2,bt2 = pose_forward(inputs, model)
         front_pose, back_pose = None, None
 
-        recon_loss2, mask2, _,smooth_loss2 = compute_selfsup_mono_loss_2(model_outs_2, inputs, train_args, fa2, ft2, ba2, bt2, front_pose=front_pose, back_pose=back_pose, models_outs_1=model_outs_1)
-        recon_losses1.append(recon_loss2)
-        smooth_losses1.append(smooth_loss2)
+        recon_loss2, mask2, _,smooth_loss2 = compute_selfsup_mono_loss_2(model_outs2, inputs, train_args, fa2, ft2, ba2, bt2, front_pose=front_pose, back_pose=back_pose, model_outs1=model_outs1, mode=mode)
+        recon_losses2.append(recon_loss2)
+        smooth_losses2.append(smooth_loss2)
         
-        pred_depth_orig2 = F.interpolate(model_outs_2['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
+        pred_depth_orig2 = F.interpolate(model_outs2['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
         
         losses['selfsup_loss2'] = torch.stack(recon_losses2).mean()
         losses['smooth_loss2'] = torch.stack(smooth_losses2).mean()
@@ -91,9 +91,9 @@ def compute_loss_twice(inputs, model, train_args, mode = TRAIN):
     
     # returns
     if mode == TRAIN:
-        return total_loss, losses, model_outs
+        return total_loss, losses, model_outs1, model_outs2
     else:
-        return total_loss, losses, pred_depth_orig, model_outs
+        return total_loss, losses, pred_depth_orig1, pred_depth_orig2, model_outs1, model_outs2
 
 
 def model_forward_twice(inputs, model, train_args, mode):
@@ -226,7 +226,6 @@ def compute_selfsup_mono_loss_1(model_outs, inputs, train_args, angle, trans, ba
         loss_record = mask * reprojection_loss / mask.sum().detach()
         loss_records += loss_record.mean().detach()
 
-
         to_optimise, idxs = torch.min(combined, dim=1)
 
         loss += to_optimise.mean()
@@ -241,7 +240,7 @@ def compute_selfsup_mono_loss_1(model_outs, inputs, train_args, angle, trans, ba
 
 
 
-def compute_selfsup_mono_loss_2(model_outs, inputs, train_args, angle, trans, back_angle, back_trans, front_pose=None, back_pose=None, model_outs_1=None):
+def compute_selfsup_mono_loss_2(model_outs, inputs, train_args, angle, trans, back_angle, back_trans, front_pose=None, back_pose=None, model_outs1=None, mode=None):
 # def compute_selfsup_mono_loss(label_pred_depth, label, train_args, angle, trans, back_angle, back_trans, scale_disp):
     
     loss = 0
@@ -262,7 +261,6 @@ def compute_selfsup_mono_loss_2(model_outs, inputs, train_args, angle, trans, ba
 
     for scale in range(4):
         
-        breakpoint()
         reprojection_losses = []
         twice_depth_losses=[]
 
@@ -272,14 +270,6 @@ def compute_selfsup_mono_loss_2(model_outs, inputs, train_args, angle, trans, ba
         _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
         
         model_outs['pred_depth',0, scale] = depth
-        
-        
-        
-        # twice depth loss
-        twice_depth_losses.append(utils.compute_twice_depth_loss(model_outs_1['pred_depth',0,scale], depth))
-        
-
-
 
         ## back to current
         cam_points = backproject_depth(depth, inputs['inv_K',0])
@@ -330,8 +320,16 @@ def compute_selfsup_mono_loss_2(model_outs, inputs, train_args, angle, trans, ba
         loss_record = mask * reprojection_loss / mask.sum().detach()
         loss_records += loss_record.mean().detach()
 
-
         to_optimise, idxs = torch.min(combined, dim=1)
+        
+        # JINLOVESPHO
+        msk_in, msk_out, depth_diff_dict = utils.compute_twice_depth_loss(model_outs1['pred_depth',0,scale], model_outs['pred_depth',0,scale])        
+        to_optimise = msk_in.detach() * to_optimise
+        
+        if train_args.log_tool == 'wandb' and mode == EVAL:
+            wandb.log(depth_diff_dict)
+            wandb.log({'auto_mask':wandb.Image(mask[0].detach().cpu().numpy()*100.0)})
+            wandb.log({'mving_obj_msk':wandb.Image(msk_in[0].detach().cpu().numpy()*100.0)})
 
         loss += to_optimise.mean()
 
