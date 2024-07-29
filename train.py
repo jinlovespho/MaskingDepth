@@ -7,6 +7,7 @@ import wandb
 import initialize
 import utils
 import loss
+import loss_twice
 from eval import visualize, eval_metric, get_eval_dict
 
 from torchvision.utils import save_image
@@ -117,8 +118,11 @@ if __name__ == "__main__":
                 if type(val) == torch.Tensor:   # not all inputs are tensors
                     inputs[key] = val.to(device)
            
-            # train forward pass
-            total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
+            if train_args.model_info == 'mf_croco_try2':
+                # train forward pass
+                total_loss, losses, model_outs = loss_twice.compute_loss_twice(inputs, model, train_args, TRAIN)
+            else:
+                total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
 
             # terminal log
             tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})

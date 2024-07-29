@@ -233,8 +233,14 @@ def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, n
     return F.conv3d(padded_inp, kernel_flip, padding=0).view(b, c, out_channels, h, w)
 
 ############################################################################## 
-########################    For Self-Supervised Loss
+########################    For Self-Supervised Loss    ######################
 ############################################################################## 
+
+
+def compute_twice_depth_loss(depth1, depth2):
+    depth_abs_rel = torch.mean(torch.abs(depth1 - depth2) / depth1)
+    return depth_abs_rel
+
 
 def compute_reprojection_loss( pred, target):
     """Computes reprojection loss between a batch of predicted and target images

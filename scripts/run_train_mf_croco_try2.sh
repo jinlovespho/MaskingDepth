@@ -1,5 +1,8 @@
 
 
+# twice forward pass
+# (t,t) and (t,t-1)
+
 DATA_ARGS="
     --data_path /mnt/ssd2/dataset/KITTI
     --dataset kitti
@@ -31,7 +34,7 @@ LOSS_ARGS="
 "
 
 MODEL_ARGS="
-    --model_info mf_croco_baseline
+    --model_info mf_croco_try2
     --pretrained_weight_path ./pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth
 "
 
@@ -40,9 +43,9 @@ SAVE_ARGS="
 "
 
 LOGGING_ARGS="
-    --log_tool wandb
+    --log_tool wandba
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu3_kitti_croco_encB_decB_baseline
+    --wandb_exp_name pho_server5_gpu0_kitti_croco_encB_decB_try2
     --log_path /mnt/ssd2/dataset/jinlovespho/aaai_log
 "
 
@@ -51,7 +54,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=3  python ./train.py        \
+CUDA_VISIBLE_DEVICES=0  python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

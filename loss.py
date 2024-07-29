@@ -86,6 +86,7 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
 
 
 def model_forward(inputs, model, train_args, mode):
+    
     img1 = inputs['color',0,0]
     img2 = inputs['color',-1,0]
     outputs = model['depth'](img1,img2)
