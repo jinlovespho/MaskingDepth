@@ -116,6 +116,7 @@ except ImportError:
             self.base = freq 
             self.F0 = F0
             self.cache = {}
+            
 
         def get_cos_sin(self, D, seq_len, device, dtype):
             if (D,seq_len,device,dtype) not in self.cache:
@@ -135,6 +136,12 @@ except ImportError:
             
         def apply_rope1d(self, tokens, pos1d, cos, sin):
             assert pos1d.ndim==2
+            
+            # JINLOVESPHO
+            pos1d=pos1d.cuda()
+            cos=cos.cuda()
+            sin=sin.cuda()
+            
             cos = torch.nn.functional.embedding(pos1d, cos)[:, None, :, :]
             sin = torch.nn.functional.embedding(pos1d, sin)[:, None, :, :]
             return (tokens * cos) + (self.rotate_half(tokens) * sin)

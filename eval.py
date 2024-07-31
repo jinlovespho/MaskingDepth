@@ -70,6 +70,14 @@ def eval_virtual_kitti(pred_depth, inputs):
 
 def get_eval_dict(errors):
     mean_errors = np.array(errors).mean(1)
+    depth_metric_names = ["tt_de/abs_rel", "tt_de/sq_rel", "tt_de/rms", "tt_de/log_rms", "tt_da/a1", "tt_da/a2", "tt_da/a3"]
+    error_dict = {}
+    for error_name, error_value in zip(depth_metric_names, mean_errors):
+        error_dict[error_name] = error_value.item()
+    return error_dict
+
+def get_eval_dict2(errors):
+    mean_errors = np.array(errors).mean(1)
     depth_metric_names = ["de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
     error_dict = {}
     for error_name, error_value in zip(depth_metric_names, mean_errors):
@@ -77,6 +85,64 @@ def get_eval_dict(errors):
     return error_dict
 
 def eval_metric(pred_depths, gt_depths, train_args):
+    
+    # pred_depths [ (375,1242) . . . ]
+    # gt_depths   [ (375,1242) . . . ]
+    
+    num_samples = len(pred_depths)
+
+    silog = np.zeros(num_samples, np.float32)
+    log10 = np.zeros(num_samples, np.float32)
+    rms = np.zeros(num_samples, np.float32)
+    log_rms = np.zeros(num_samples, np.float32)
+    abs_rel = np.zeros(num_samples, np.float32)
+    sq_rel = np.zeros(num_samples, np.float32)
+    d1 = np.zeros(num_samples, np.float32)
+    d2 = np.zeros(num_samples, np.float32)
+    d3 = np.zeros(num_samples, np.float32)
+    
+    ratios=[]
+    
+    for i in range(num_samples):
+        # gt_depth and pred_depth are numpys
+        
+        MIN_DEPTH = 0.001
+        MAX_DEPTH = (10.0  if train_args.dataset == 'nyu' else 80.0)  # 80
+        
+        gt_depth = gt_depths[i]
+        gt_height, gt_width = gt_depth.shape
+        
+        pred_depth = pred_depths[i]
+         
+        mask = np.logical_and(gt_depth > MIN_DEPTH, gt_depth < MAX_DEPTH)
+        crop = np.array([0.40810811 * gt_height, 0.99189189 * gt_height,
+                            0.03594771 * gt_width,  0.96405229 * gt_width]).astype(np.int32)
+        crop_mask = np.zeros(mask.shape)
+        crop_mask[crop[0]:crop[1], crop[2]:crop[3]] = 1
+        mask = np.logical_and(mask, crop_mask)
+        
+        pred_depth = pred_depth[mask]
+        gt_depth = gt_depth[mask]
+        
+        ratio = np.median(gt_depth) / np.median(pred_depth)
+        ratios.append(ratio)
+        pred_depth *= ratio
+        
+        pred_depth[pred_depth < MIN_DEPTH] = MIN_DEPTH
+        pred_depth[pred_depth > MAX_DEPTH] = MAX_DEPTH
+        
+        silog[i], log10[i], abs_rel[i], sq_rel[i], rms[i], log_rms[i], d1[i], d2[i], d3[i] = compute_errors(gt_depth, pred_depth)
+        
+    print("{:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}, {:>7}".format(
+        'd1', 'd2', 'd3', 'AbsRel', 'SqRel', 'RMSE', 'RMSElog', 'SILog', 'log10'))
+    print("{:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}, {:7.4f}".format(
+        d1.mean(), d2.mean(), d3.mean(),
+        abs_rel.mean(), sq_rel.mean(), rms.mean(), log_rms.mean(), silog.mean(), log10.mean()))
+
+    return abs_rel, sq_rel, rms, log_rms, d1, d2, d3
+
+
+def eval_metric2(pred_depths, gt_depths, train_args):
     
     # pred_depths [ (375,1242) . . . ]
     # gt_depths   [ (375,1242) . . . ]
@@ -382,7 +448,67 @@ def visualize(inputs, pred_depth, model_outs, train_args, sample_num=4):
             vis2.append(wandb.Image(vis_curr_from_fut, caption="Curr from Fut"))
             
             
-        wandb_eval_dict['vis1'] = vis1
-        wandb_eval_dict['vis2'] = vis2
+        wandb_eval_dict['tt_vis1'] = vis1
+        wandb_eval_dict['tt_vis2'] = vis2
+        
+        wandb.log(wandb_eval_dict)
+        
+        
+def visualize2(inputs, pred_depth, model_outs, train_args, sample_num=4):
+    b = pred_depth.shape[0]
+    sample_num = b if b < sample_num else sample_num
+    
+    orig_h, orig_w = inputs['depth_gt'].shape[-2:]
+       
+    input_curr_img = F.interpolate(inputs['color',0,0], size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+    
+    for i in range(sample_num):
+        wandb_eval_dict = {}
+        vis1 = []
+        vis2 = []
+
+        #rgb image 
+        vis_curr_img = input_curr_img[i]
+        vis_curr_img *= 255
+        vis1.append(wandb.Image(vis_curr_img, caption="Curr Input Image"))
+        
+        # pred depth
+        vis_pred_depth = pred_depth[i].squeeze().cpu().numpy() 
+        vmax = np.percentile(vis_pred_depth, 95)
+        normalizer = mpl.colors.Normalize(vmin=vis_pred_depth.min(), vmax=vmax)
+        mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+        colormapped_pred_depth = (mapper.to_rgba(vis_pred_depth)[:, :, :3] * 255).astype(np.uint8)
+        vis_pred_depth = pil.fromarray(colormapped_pred_depth)
+        vis1.append(wandb.Image(vis_pred_depth, caption="Pred Depth"))
+        
+        # gt_depth
+        gt_depth = inputs['depth_gt'][i].squeeze().cpu().numpy() 
+        vmax = np.percentile(gt_depth, 95)
+        normalizer = mpl.colors.Normalize(vmin=gt_depth.min(), vmax=vmax)
+        mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+        colormapped_gt_depth = (mapper.to_rgba(gt_depth)[:, :, :3] * 255).astype(np.uint8)
+        gt_depth = pil.fromarray(colormapped_gt_depth)
+        vis1.append(wandb.Image(gt_depth, caption="GT Depth"))
+  
+        
+        if train_args.training_loss == 'selfsupervised_img_recon':
+            
+            # resize to orig size
+            vis_curr_from_prev = F.interpolate(model_outs['reproj_img_from_prev'], size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+            vis_curr_from_fut  = F.interpolate(model_outs['reproj_img_from_fut'], size=(orig_h, orig_w), mode="bilinear", align_corners=False)
+            
+            # curr_img from prev_img 
+            vis_curr_from_prev = vis_curr_from_prev[i]
+            vis_curr_from_prev *= 255
+            vis2.append(wandb.Image(vis_curr_from_prev, caption="Curr from Prev"))
+            
+            # curr_img from future_img
+            vis_curr_from_fut = vis_curr_from_fut[i]
+            vis_curr_from_fut *= 255
+            vis2.append(wandb.Image(vis_curr_from_fut, caption="Curr from Fut"))
+            
+            
+        wandb_eval_dict['tt_1_vis1'] = vis1
+        wandb_eval_dict['tt_1_vis2'] = vis2
         
         wandb.log(wandb_eval_dict)

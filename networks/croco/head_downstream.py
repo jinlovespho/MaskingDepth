@@ -24,7 +24,7 @@ class PixelwiseTaskWithDPT(nn.Module):
     """
 
     def __init__(self, *, hooks_idx=None, layer_dims=[96,192,384,768],
-                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., attn_agg = False,with_pose=False, residual = False, single=False, args=None, **kwargs):
+                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., attn_agg = False, with_pose=False, residual = False, single=False, args=None, **kwargs):
         super(PixelwiseTaskWithDPT, self).__init__()
         self.return_all_blocks = True # backbone needs to return all layers 
         self.postprocess = postprocess
@@ -38,6 +38,20 @@ class PixelwiseTaskWithDPT(nn.Module):
         self.residual = residual
         self.single = single
         self.args=args
+        
+        print('return_all_blocks: ',self.return_all_blocks)
+        print('postprocess: ', self.postprocess)
+        print('output_width_ratio: ', self.output_width_ratio)
+        print('num_channels: ', self.num_channels)
+        print('hooks_idx: ',self.hooks_idx)
+        print('layer_dims: ', self.layer_dims)
+        print('max_depth: ',self.max_depth)
+        print('attn_agg: ', self.attn_agg)
+        print('with_pose: ', self.with_pose)
+        print('residual: ', self.residual)
+        print('single: ', self.single)
+        print('args: ',self.args)
+        
     
     def setup(self, croconet):
         dpt_args = {'output_width_ratio': self.output_width_ratio, 'num_channels': self.num_channels, 'max_depth': self.max_depth}

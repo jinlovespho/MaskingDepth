@@ -7,7 +7,8 @@ import wandb
 import initialize
 import utils
 import loss
-from eval import visualize, eval_metric, get_eval_dict
+import loss_twice
+from eval import visualize, visualize2, eval_metric, get_eval_dict, get_eval_dict2
 
 from torchvision.utils import save_image
 from networks.monodepth2_networks import compute_depth_losses
@@ -71,6 +72,10 @@ def get_train_args():
     # Etc args
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--load_weight_path', type=str, default=None)
+    
+    # JINLOVESPHO
+    parser.add_argument('--fwd_pass', type=int ,default=1)
+    
     args = parser.parse_args()
     return args
 
@@ -146,8 +151,11 @@ if __name__ == "__main__":
                 if type(val) == torch.Tensor:   # not all inputs are tensors
                     inputs[key] = val.to(device)
            
-            # train forward pass
-            total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN, epoch=epoch)
+            # train - fwd pass TWICE
+            if train_args.fwd_pass == 2:
+                total_loss, losses, model_outs1, model_outs2 = loss_twice.compute_loss_twice(inputs, model, train_args, TRAIN)
+            else:
+                total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN, epoch=epoch)
 
             # terminal log
             tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})
@@ -183,10 +191,14 @@ if __name__ == "__main__":
         with torch.no_grad():
             utils.model_mode(model,EVAL)
             eval_loss = 0
+            gt_depths = [] 
             eval_error = []
             pred_depths = []
-            gt_depths = []
-
+            
+            # JINLOVESPHO
+            eval_error2 = []
+            pred_depths2 = []
+            
             # val loop
             tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_args.num_epoch}')
             for i, inputs in enumerate(tqdm_val):
@@ -199,22 +211,32 @@ if __name__ == "__main__":
                     if type(val) == torch.Tensor:   # not all inputs are tensors
                         inputs[key] = val.to(device)
             
-                # val forward pass
-                total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL, epoch=epoch)
-                
+                # val - fwd pass TWICE
+                if train_args.fwd_pass == 2:
+                    total_loss, losses, pred_depth_orig, pred_depth_orig2, model_outs, model_outs2 = loss_twice.compute_loss_twice(inputs, model, train_args, EVAL)
+                else:
+                    total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
+                    
                 eval_loss += total_loss
                 
                 gt_depth = inputs['depth_gt']
                 pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
+                pred_depths2.extend(pred_depth_orig2.squeeze(1).detach().cpu().numpy()) # JINLOVESPHO
                 gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
             
             eval_error = eval_metric(pred_depths, gt_depths, train_args)  
             error_dict = get_eval_dict(eval_error)
-            error_dict["val_loss"] = eval_loss / len(val_loader)                
+            error_dict["val_loss"] = eval_loss / len(val_loader)           
+            
+            eval_error2 = eval_metric(pred_depths2, gt_depths, train_args)  
+            error_dict2 = get_eval_dict2(eval_error2)
+            error_dict2["val_loss2"] = eval_loss / len(val_loader)        
 
             if train_args.log_tool == 'wandb':
                 error_dict["epoch"] = (epoch+1)
                 wandb.log(error_dict)
+                wandb.log(error_dict2)
                 visualize(inputs, pred_depth_orig, model_outs, train_args)
+                visualize2(inputs, pred_depth_orig2, model_outs2, train_args)
                 
     print('End of Epoch')
