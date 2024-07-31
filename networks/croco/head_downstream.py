@@ -59,6 +59,8 @@ class PixelwiseTaskWithDPT(nn.Module):
         dpt_args['hooks'] = self.hooks_idx
         dpt_args['layer_dims'] = self.layer_dims
         dpt_args['args'] = self.args
+        dpt_args['with_pose'] = self.with_pose
+        
         if self.attn_agg:
             dpt_args['with_pose'] = self.with_pose
             
@@ -74,6 +76,6 @@ class PixelwiseTaskWithDPT(nn.Module):
         if self.attn_agg:
             out = self.dpt(x, image_size=(img_info['height'],img_info['width']),attn_map=attn_map, intrinsics=intrinsics)
         else:
-            out = self.dpt(x, image_size=(img_info['height'],img_info['width']),attn_map=attn_map)
+            out = self.dpt(x, image_size=(img_info['height'],img_info['width']),attn_map=attn_map, intrinsics=intrinsics)
         if self.postprocess: out = self.postprocess(out)
         return out

@@ -36,8 +36,8 @@ MODEL_ARGS="
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
 --attn_conv4d
 --softmax_attn
+--mask_ratio 0.5
 --zero_aug 0.33
---moving_masking no_grad_distill
 "
 
 SAVE_ARGS="
@@ -47,7 +47,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggfeature_nogradtt_distill
+    --wandb_exp_name hg_croco_basebase_attnaggfeature_zeroaug_mask05
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

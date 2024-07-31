@@ -32,7 +32,8 @@ MODEL_ARGS="
 --pretrained_weight vit_base_384
 --pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
 --zero_aug 0.0
---load_weight_path /home/cvlab08/projects/data/hg_log/selfsup_depth/hg_croco_multi_zeroaug/weights_5/depth.pth 
+--load_weight_path /home/cvlab08/projects/data/hg_log/selfsup_depth/hg_croco_multi_zeroaug/weights_20/
+--softmax_attn
 "
 
 SAVE_ARGS="
@@ -42,7 +43,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool None
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_multi_zeroaug
+    --wandb_exp_name hg_croco_multi_zeroaug_vis
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 
@@ -51,7 +52,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=2   python ./vis.py        \
+CUDA_VISIBLE_DEVICES=0   python ./vis.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

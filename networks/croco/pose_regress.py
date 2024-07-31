@@ -217,10 +217,10 @@ def get_positional_encodings(B, N, intrinsics=None):
     # from the fundamental matrix
     # so, v is of shape B, N, C + 6
     '''
-    h,w = 48,160
+    h,w = 12,40
     if N == 64*64:
         h,w = 64,64
-    elif N != 48*160:
+    elif N != 12*40:
         print('unexpected resolution for positional encoding')
         assert(False)
 
@@ -311,9 +311,10 @@ class CrossAttention(nn.Module):
         
        
         if not self.noess:
-            attn_fundamental_1 = corr.reshape(B, 480, N).permute(0,2,1).reshape(8,7680,12,40)
-            attn_fundamental_1 = F.interpolate(attn_fundamental_1, size=(48,160), mode='bilinear')
-            attn_fundamental_1 = attn_fundamental_1.reshape(B, N, 7680).transpose(-2,-1)
+            attn_fundamental_1 = corr.reshape(B, 480, N).permute(0,2,1).reshape(B,480,12,40)
+            # attn_fundamental_1 = F.interpolate(attn_fundamental_1, size=(48,160), mode='bilinear')
+            # import ipdb;ipdb.set_trace()
+            attn_fundamental_1 = attn_fundamental_1.reshape(B, N, 480).transpose(-2,-1)
             
             positional = get_positional_encodings(B, N, intrinsics=intrinsics).cuda() # shape B,N,6
               

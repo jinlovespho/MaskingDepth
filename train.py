@@ -55,6 +55,8 @@ def get_train_args():
     parser.add_argument('--single', action="store_true")
     parser.add_argument('--zero_aug', type=float, default=0.0)
     parser.add_argument('--attn_conv4d', action="store_true")
+    parser.add_argument('--mask_ratio', type=float, default=0.0)
+    parser.add_argument('--moving_masking', type=str, default='None', choices=['no_grad','no_grad_distill','None'])
     
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
@@ -145,11 +147,10 @@ if __name__ == "__main__":
                     inputs[key] = val.to(device)
            
             # train forward pass
-            total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN)
+            total_loss, losses, model_outs = loss.compute_loss(inputs, model, train_args, TRAIN, epoch=epoch)
 
             # terminal log
             tqdm_train.set_postfix({'bs':train_args.batch_size, 'train_loss':f'{total_loss:.4f}'})
-
             # backward pass 
             optimizer.zero_grad()
             total_loss.backward()
@@ -199,7 +200,7 @@ if __name__ == "__main__":
                         inputs[key] = val.to(device)
             
                 # val forward pass
-                total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL)
+                total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL, epoch=epoch)
                 
                 eval_loss += total_loss
                 

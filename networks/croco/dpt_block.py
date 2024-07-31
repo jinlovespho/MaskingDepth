@@ -298,6 +298,7 @@ class DPTOutputAdapter(nn.Module):
                  residual = False,
                  single = False,
                  args = None,
+                 with_pose = False,
                  **kwargs):
         super().__init__()
         self.num_channels = num_channels
@@ -313,6 +314,7 @@ class DPTOutputAdapter(nn.Module):
         self.residual = residual
         self.single = single
         self.args = args
+        self.with_pose = with_pose
 
         # Actual patch height and width, taking into account stride of input
         self.P_H = max(1, self.patch_size[0] // stride_level)
@@ -324,6 +326,37 @@ class DPTOutputAdapter(nn.Module):
         self.scratch.refinenet2 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
         self.scratch.refinenet3 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
         self.scratch.refinenet4 = make_fusion_block(feature_dim, use_bn, output_width_ratio)
+        
+        if self.with_pose:
+            self.pose_agg = CrossBlock(dim=768)
+            self.pose_regressor = nn.Sequential(
+                nn.Linear((768+6), 512 ),
+                nn.ReLU(),
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Linear(256, 128),
+                nn.ReLU(),
+                
+            )
+            self.rotation_regressor = nn.Sequential(
+                nn.ReLU(),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+                nn.Linear(64, 32),
+                nn.ReLU(),
+                nn.Linear(32, 6),
+            )
+            self.translation_regressor = nn.Sequential(
+                nn.ReLU(),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+                nn.Linear(64, 32),
+                nn.ReLU(),
+                nn.Linear(32, 3),
+            )
+        
+        
+        
         
         if self.args.attn_conv4d:
             self.norm0 = nn.BatchNorm2d(256+480)
@@ -510,8 +543,30 @@ class DPTOutputAdapter(nn.Module):
         x.append(encoder_tokens[:, :])
         x = torch.cat(x, dim=-1)
         return x
+    
+    def r6d2mat(self,d6: torch.Tensor) -> torch.Tensor:
+        """
+        Converts 6D rotation representation by Zhou et al. [1] to rotation matrix
+        using Gram--Schmidt orthogonalisation per Section B of [1].
+        Args:
+            d6: 6D rotation representation, of size (*, 6). Here corresponds to the two
+                first two rows of the rotation matrix. 
+        Returns:
+            batch of rotation matrices of size (*, 3, 3)
+        [1] Zhou, Y., Barnes, C., Lu, J., Yang, J., & Li, H.
+        On the Continuity of Rotation Representations in Neural Networks.
+        IEEE Conference on Computer Vision and Pattern Recognition, 2019.
+        Retrieved from http://arxiv.org/abs/1812.07035
+        """
 
-    def forward(self, encoder_tokens: List[torch.Tensor], image_size, attn_map=None,):
+        a1, a2 = d6[..., :3], d6[..., 3:]
+        b1 = F.normalize(a1, dim=-1)
+        b2 = a2 - (b1 * a2).sum(-1, keepdim=True) * b1
+        b2 = F.normalize(b2, dim=-1)
+        b3 = torch.cross(b1, b2, dim=-1)
+        return torch.stack((b1, b2, b3), dim=-2)  # corresponds to row
+
+    def forward(self, encoder_tokens: List[torch.Tensor], image_size, attn_map=None, intrinsics=None):
             #input_info: Dict):
         outputs={}
         assert self.dim_tokens_enc is not None, 'Need to call init(dim_tokens_enc) function first'
@@ -527,11 +582,10 @@ class DPTOutputAdapter(nn.Module):
         if self.residual:
             layers = [layers[0]+layers[4], layers[1]+layers[5], layers[2]+layers[6], layers[3]+layers[7]]
         
-
-            
-            
+        if self.with_pose:
+            layers_tmp = [layer.detach().clone() for layer in layers]
+            layers_tmp = torch.stack(layers_tmp,dim=1).mean(dim=1)
         
-
         # Extract only task-relevant tokens and ignore global tokens.
         layers = [self.adapt_tokens(l) for l in layers]
         # Reshape tokens to spatial representation
@@ -572,7 +626,18 @@ class DPTOutputAdapter(nn.Module):
         path_2 = self.scratch.refinenet2(path_3, layers[1])
         path_1 = self.scratch.refinenet1(path_2, layers[0])
         
+        if self.with_pose:
+            layers_0 = rearrange(layers[0],'b c nh nw -> b (nh nw) c')
+            B = layers_0.shape[0]
             
+            pose_feat_ctxt = self.pose_agg(layers_tmp.detach(),corr=torch.stack(attn_map,dim=1).mean(dim=1).mean(dim=1),intrinsics=intrinsics).mean(dim=2)
+            pose_latent_ctxt = self.pose_regressor(pose_feat_ctxt)
+            
+            rot_ctxt, tran_ctxt = self.rotation_regressor(pose_latent_ctxt), self.translation_regressor(pose_latent_ctxt)# Bxn_views x 9, Bxn_views x 3 
+            R_ctxt = self.r6d2mat(rot_ctxt)[:, :3, :3] 
+
+            estimated_rel_pose_ctxt = torch.cat((torch.cat((R_ctxt, tran_ctxt.unsqueeze(-1)), dim=-1),torch.FloatTensor([0,0,0,1]).expand(B,1,-1).to(tran_ctxt.device)), dim=1) #estimated pose between query and context 2
+            outputs['pose'] = estimated_rel_pose_ctxt
         
 
         # Output head

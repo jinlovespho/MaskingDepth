@@ -169,6 +169,7 @@ def model_load(train_args, device):
         ckpt = torch.load(train_args.pretrained_path, 'cpu')
         croco_args = croco_args_from_ckpt(ckpt)
         croco_args['img_size'] = (192, 640)
+        croco_args['mask_ratio'] = train_args.mask_ratio
         # croco_args['attn_conv4d'] = train_args.attn_conv4d
         croco_args['args'] = train_args
         
@@ -180,7 +181,7 @@ def model_load(train_args, device):
             head = PixelwiseTaskWithDPT(attn_agg = train_args.attn_agg, hooks_idx=[14,17,20,23], with_pose = train_args.with_pose,residual = train_args.residual, single = train_args.single)
         else:
             if train_args.attn_conv4d:
-                head = PixelwiseTaskWithDPT(residual=train_args.residual, single=train_args.single, hooks_idx=[14,17,20,23], args=train_args)
+                head = PixelwiseTaskWithDPT(residual=train_args.residual, single=train_args.single, hooks_idx=[14,17,20,23], args=train_args,with_pose=train_args.with_pose)
             else:
                 head = PixelwiseTaskWithDPT(residual=train_args.residual, single=train_args.single, args=train_args)
         head.num_channels = num_channels
@@ -327,7 +328,9 @@ def model_load(train_args, device):
     
     if train_args.load_weight_path is not None:
         print('load_weight_path')
-        model['depth'].load_state_dict(torch.load(train_args.load_weight_path))
+        model['depth'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'depth.pth')))
+        model['pose_encoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_encoder.pth')))
+        model['pose_decoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_decoder.pth')))
     
 
     for key, val in model.items():

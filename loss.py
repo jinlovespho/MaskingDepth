@@ -7,6 +7,7 @@ from utils import *
 import sys
 import pdb
 import random
+import wandb
 
 class ForkedPdb(pdb.Pdb):
     """A Pdb subclass that may be used
@@ -27,7 +28,7 @@ TRAIN   = 0
 EVAL    = 1
 
 # total loss
-def compute_loss(inputs, model, train_args, mode = TRAIN):
+def compute_loss(inputs, model, train_args, mode = TRAIN,epoch=0):
     losses = {}
     total_loss = 0
     
@@ -35,7 +36,19 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
     gt_depth = inputs['depth_gt']
     
     # forward pass 
-    model_outs = model_forward(inputs, model, train_args, mode)  # (b,1,192,640)
+    if train_args.with_pose:
+        model_outs, model_outs_back = model_forward(inputs, model, train_args, mode, train_args.with_pose)  # (b,1,192,640)
+    else:
+        model_outs = model_forward(inputs, model, train_args, mode, train_args.with_pose)  # (b,1,192,640)
+        
+    if 'no_grad' in train_args.moving_masking:
+        with torch.no_grad():
+            input_tt = {('color_aug',0,0):inputs['color_aug',0,0].clone(), ('color_aug',-1,0):inputs['color_aug',0,0].clone(), ('K',0):inputs['K',0].clone(),\
+                        ('color',0,0):inputs['color',0,0].clone(), ('color',-1,0):inputs['color',0,0].clone(), ('inv_K',0):inputs['inv_K',0].clone()}
+            model_outs_tt = model_forward(input_tt, model, train_args, mode, train_args.with_pose)
+    else:
+        model_outs_tt = None
+        
     # supervised training
     if train_args.training_loss == 'supervised_depth':
         # breakpoint()
@@ -56,12 +69,18 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
             front_pose, back_pose = None, None
         else:
             front_pose = model_outs['pose']
-            back_pose = None
+            back_pose = model_outs_back['pose']
             fa,ft,ba,bt = None, None, None, None
+            
+            for i in range(4):
+                model_outs['pred_disp',i] = (model_outs['pred_disp',i]+model_outs_back['pred_disp',i])/2.
+            
 
-        recon_loss, mask, _,smooth_loss = compute_selfsup_mono_loss(model_outs, inputs, train_args, fa, ft,ba,bt, front_pose=front_pose, back_pose=back_pose)
+        recon_loss, mask, _,smooth_loss = compute_selfsup_mono_loss(model_outs, inputs, train_args, fa, ft,ba,bt, front_pose=front_pose, back_pose=back_pose, model_outs_tt=model_outs_tt,mode=mode,epoch=epoch)
         recon_losses.append(recon_loss)
         smooth_losses.append(smooth_loss)
+        
+        model_outs['pose_tmp'] = utils.transformation_from_parameters(fa[:, 0], ft[:, 0], invert=(-1<0))
         
         pred_depth_orig = F.interpolate(model_outs['pred_depth',0,0], (orig_h, orig_w), mode="bilinear", align_corners = True)   # (b,1,375,1242)
         
@@ -84,19 +103,26 @@ def compute_loss(inputs, model, train_args, mode = TRAIN):
         return total_loss, losses, pred_depth_orig, model_outs
 
 
-def model_forward(inputs, model, train_args, mode):
+def model_forward(inputs, model, train_args, mode, with_pose = False):
+    if with_pose:
+        outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], mode, intrinsics=inputs['K',0])      
+        outputs_back = model['depth'](inputs[('color',0,0)], inputs[('color',1,0)], mode, intrinsics=inputs['K',0])
+        
+        return outputs, outputs_back
+    
+    
     if train_args.model_info == 'croco':
         if mode == TRAIN:
-            target = inputs['color_aug',0,0]
-            source = inputs['color_aug',-1,0]
+            target = inputs['color_aug',0,0].clone()
+            source = inputs['color_aug',-1,0].clone()
             for batch in range(source.shape[0]):
                 rand_num = random.random()
                 if rand_num < train_args.zero_aug:
                     source[batch] = target[batch]
                     
-            outputs = model['depth'](target, source, 1, intrinsics=inputs['K',0])
+            outputs = model['depth'](target, source, mode, intrinsics=inputs['K',0])
         else:
-            outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], 1, intrinsics=inputs['K',0])      
+            outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], mode, intrinsics=inputs['K',0])      
     else:
         outputs = model['depth'](inputs, train_args, mode)
     return outputs
@@ -125,7 +151,7 @@ def compute_sup_loss(pred_depth, gt_depth, non_zero_mask):
         loss = torch.abs(pred_depth[non_zero_mask] - gt_depth.detach()[non_zero_mask]).mean()
     return loss
 
-def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back_angle, back_trans, front_pose=None, back_pose=None):
+def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back_angle, back_trans, front_pose=None, back_pose=None, model_outs_tt=None,mode=TRAIN, epoch=0):
 # def compute_selfsup_mono_loss(label_pred_depth, label, train_args, angle, trans, back_angle, back_trans, scale_disp):
     
     loss = 0 
@@ -206,9 +232,33 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
         mask[mask>=1] = 1.0
         loss_record = mask * reprojection_loss / mask.sum().detach()
         loss_records += loss_record.mean().detach()
-
-
+        
         to_optimise, idxs = torch.min(combined, dim=1)
+        
+        if train_args.moving_masking == 'no_grad':
+            disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
+            _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
+            moving_mask = torch.abs(model_outs['pred_depth',0, scale] - depth) / depth
+            moving_mask = moving_mask < 0.1
+            
+            to_optimise = moving_mask.detach() * to_optimise
+            
+            if train_args.log_tool == 'wandb' and mode==EVAL: 
+                wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
+                
+        elif train_args.moving_masking == 'no_grad_distill' and epoch>=1:
+            disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
+            _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
+            moving_mask = torch.abs(model_outs['pred_depth',0, scale] - depth) / depth
+            moving_mask = moving_mask < 0.1
+            
+            to_optimise = moving_mask.detach() * to_optimise
+            
+            if train_args.log_tool == 'wandb' and mode==EVAL: 
+                wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
+
+            loss += 0.01*(1-moving_mask.detach().int())*torch.abs(model_outs['pred_depth',0,scale]- depth)
+
 
         loss += to_optimise.mean()
 
