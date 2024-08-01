@@ -47,7 +47,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggfeature_zero05
+    --wandb_exp_name hg_croco_basebase_attnaggtest_zero05
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

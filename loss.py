@@ -239,7 +239,7 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
             disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
             _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
             moving_mask = torch.abs(model_outs['pred_depth',0, scale] - depth) / depth
-            moving_mask = moving_mask < 0.1
+            moving_mask = moving_mask < train_args.masking_threshold
             
             to_optimise = moving_mask.detach() * to_optimise
             
@@ -250,7 +250,7 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
             disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
             _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
             moving_mask = torch.abs(model_outs['pred_depth',0, scale] - depth) / depth
-            moving_mask = moving_mask < 0.1
+            moving_mask = moving_mask < train_args.masking_threshold
             
             to_optimise = moving_mask.detach() * to_optimise
             

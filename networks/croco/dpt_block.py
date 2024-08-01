@@ -684,6 +684,7 @@ class DPTOutputAggregateAdapter(nn.Module):
                  max_depth = 80.,
                  with_pose = False,
                  residual = False,
+                 args = None,
                  **kwargs):
         super().__init__()
         self.num_channels = num_channels
@@ -697,6 +698,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         self.head_type = head_type
         self.max_depth=max_depth
         self.residual = residual
+        self.args = args
 
         # Actual patch height and width, taking into account stride of input
         self.P_H = max(1, self.patch_size[0] // stride_level)
@@ -705,10 +707,6 @@ class DPTOutputAggregateAdapter(nn.Module):
         self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
 
         # self.feature_proj = nn.ModuleList([nn.Linear(256, 128) for i in range(4)])
-        self.norm0 = nn.BatchNorm2d(256+480)
-        self.norm1 = nn.BatchNorm2d(256+480)
-        self.norm2 = nn.BatchNorm2d(256+480)
-        self.norm3 = nn.BatchNorm2d(256+480)
 
         self.aggregator0 = nn.Sequential( nn.GELU(),
                                           nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
@@ -819,20 +817,9 @@ class DPTOutputAggregateAdapter(nn.Module):
         else:
             raise ValueError('DPT head_type must be "regression" or "semseg".')
 
-        self._init_weights()
         # if self.dim_tokens_enc is not None:
         #     self.init(dim_tokens_enc=dim_tokens_enc)
 
-    def _init_weights(self):
-        nn.init.constant_(self.norm0.bias, 0)
-        nn.init.constant_(self.norm1.bias, 0)
-        nn.init.constant_(self.norm2.bias, 0)
-        nn.init.constant_(self.norm3.bias, 0)
-
-        nn.init.constant_(self.norm0.weight, 1.0)
-        nn.init.constant_(self.norm1.weight, 1.0)
-        nn.init.constant_(self.norm2.weight, 1.0)
-        nn.init.constant_(self.norm3.weight, 1.0)
 
     def init(self, dim_tokens_enc=768):
         """
