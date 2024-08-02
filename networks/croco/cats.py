@@ -89,20 +89,22 @@ class MultiscaleBlock(nn.Module):
         '''
         Multi-level aggregation
         '''
-        B, N, H, W = x.shape
-        if N == 1:
+
+        B, S, N, D = x.shape    # S: scale
+        if S == 1:  # only one scale. not multi-scale
             x = x.flatten(0, 1)
             x = x + self.drop_path(self.attn(self.norm1(x)))
             x = x + self.drop_path(self.mlp(self.norm2(x)))
-            return x.view(B, N, H, self.out_dim)
-        x = x.flatten(0, 1)
-        x = x + self.drop_path(self.attn(self.norm1(x)))
+            return x.view(B, S, N, self.out_dim)
+    
+        x = x.flatten(0, 1) # B*S N D
+        x = x + self.drop_path(self.attn(self.norm1(x)))    # intra attention
         x = x + self.drop_path(self.mlp2(self.norm4(x)))
-        x = x.view(B, N, H, W).transpose(1, 2).flatten(0, 1) 
+        x = x.view(B, S, N, D).transpose(1, 2).flatten(0, 1)    # B*N S D
         x = x + self.drop_path(self.attn_multiscale(self.norm3(x)))
-        x = x.view(B, H, N, W).transpose(1, 2).flatten(0, 1)
+        x = x.view(B, N, S, D).transpose(1, 2).flatten(0, 1)    # B*S N D
         x = x + self.drop_path(self.mlp(self.norm2(x)))
-        x = x.view(B, N, H, W)
+        x = x.view(B, S, N, D)
         return x
 
 

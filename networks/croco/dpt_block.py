@@ -705,12 +705,35 @@ class DPTOutputAggregateAdapter(nn.Module):
         self.P_W = max(1, self.patch_size[1] // stride_level)
 
         self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
-
+        
+        # JINLOVESPHO
         if self.args.attn_agg_tf:
-            self.attention_aggregator0 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            self.attention_aggregator1 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            self.attention_aggregator2 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            self.attention_aggregator3 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+        
+            if self.args.attn_agg_tf_multiscale:
+                
+                if self.args.attn_agg_tf_cat_out_and_map:
+                    self.attention_aggregator_multiscale_catOutandMap = nn.Sequential(  MultiscaleBlock(480+768, 8, 480+768), 
+                                                                                        MultiscaleBlock(480+768, 8, 480+768),
+                                                                                        MultiscaleBlock(480+768, 8, 480+768),
+                                                                                        MultiscaleBlock(480+768, 8, 480+768),
+                                                                                        nn.Linear(480+768, 128) 
+                                                                        )
+                    
+                else:
+                    self.attention_aggregator_multiscale = nn.Sequential(   MultiscaleBlock(480, 8, 480), 
+                                                                            MultiscaleBlock(480, 8, 480),
+                                                                            MultiscaleBlock(480, 8, 480),
+                                                                            MultiscaleBlock(480, 8, 480),
+                                                                            nn.Linear(480, 128) 
+                                                                        )    
+            
+            else:      
+                self.attention_aggregator0 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+                self.attention_aggregator1 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+                self.attention_aggregator2 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+                self.attention_aggregator3 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+            
+            
             
         feature = 128 if self.args.attn_agg_tf else 480
         
@@ -938,13 +961,14 @@ class DPTOutputAggregateAdapter(nn.Module):
         N_W = W // (self.stride_level * self.P_W)
 
         # Hook decoder onto 4 layers from specified ViT layers
-        layers = [encoder_tokens[hook] for hook in self.hooks]
+        init_layers = [encoder_tokens[hook] for hook in self.hooks]
         if self.residual:
-            layers = [layers[0]+layers[4], layers[1]+layers[5], layers[2]+layers[6], layers[3]+layers[7]]
+            init_layers = [init_layers[0]+init_layers[4], init_layers[1]+init_layers[5], init_layers[2]+init_layers[6], init_layers[3]+init_layers[7]]
         attn_maps = [(attn_map[hook-12] + attn_map[hook-13] + attn_map[hook-14])/3. for hook in self.hooks]
 
         # Extract only task-relevant tokens and ignore global tokens.
-        layers = [self.adapt_tokens(l) for l in layers]
+        layers = [self.adapt_tokens(l) for l in init_layers]
+        
         # Reshape tokens to spatial representation
         layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers]
 
@@ -952,20 +976,40 @@ class DPTOutputAggregateAdapter(nn.Module):
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
 
-        attn_maps = [l.mean(dim=1) for l in attn_maps]
-
+        attn_maps = [l.mean(dim=1) for l in attn_maps]  # b N1 N2
+        
+        # breakpoint()
+        
         if self.args.attn_agg_tf:
-            attn_maps[3] = self.attention_aggregator3(attn_maps[3].unsqueeze(dim=1)).squeeze(dim=1)
-            attn_maps[2] = self.attention_aggregator2(attn_maps[2].unsqueeze(dim=1)).squeeze(dim=1)
-            attn_maps[1] = self.attention_aggregator1(attn_maps[1].unsqueeze(dim=1)).squeeze(dim=1)
-            attn_maps[0] = self.attention_aggregator0(attn_maps[0].unsqueeze(dim=1)).squeeze(dim=1)
             
+            if self.args.attn_agg_tf_multiscale:
+                
+                if self.args.attn_agg_tf_cat_out_and_map:
+                    out_map3 = torch.cat([attn_maps[3], init_layers[3]], dim=2) # b n d1+d2 (1 480 480+768)
+                    out_map2 = torch.cat([attn_maps[2], init_layers[2]], dim=2)
+                    out_map1 = torch.cat([attn_maps[1], init_layers[1]], dim=2)
+                    out_map0 = torch.cat([attn_maps[0], init_layers[0]], dim=2) 
+                    stacked_out_map = torch.stack([out_map0, out_map1, out_map2, out_map3], dim=1)  # b 4 n d1+d2
+                    agg_attn_maps = self.attention_aggregator_multiscale_catOutandMap(stacked_out_map)  
+                else:
+                    stacked_attn_maps = torch.stack(attn_maps, dim=1)   # b 4 n1 n2 
+                    agg_attn_maps = self.attention_aggregator_multiscale(stacked_attn_maps)
+                    
+                attn_maps[3] = agg_attn_maps[:,3,:,:]
+                attn_maps[2] = agg_attn_maps[:,2,:,:]
+                attn_maps[1] = agg_attn_maps[:,1,:,:]
+                attn_maps[0] = agg_attn_maps[:,0,:,:]
+                
+            else:
+                attn_maps[3] = self.attention_aggregator3(attn_maps[3].unsqueeze(dim=1)).squeeze(dim=1)
+                attn_maps[2] = self.attention_aggregator2(attn_maps[2].unsqueeze(dim=1)).squeeze(dim=1)
+                attn_maps[1] = self.attention_aggregator1(attn_maps[1].unsqueeze(dim=1)).squeeze(dim=1)
+                attn_maps[0] = self.attention_aggregator0(attn_maps[0].unsqueeze(dim=1)).squeeze(dim=1)
+                
         
         attn_maps = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
         attn_sizes = [(6,20),(12,40),(24,80),(48,160)]
-        
-
-        
+    
         attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
         attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)
         attn3_out = self.aggregator3(attn_input3) + attn_input3
@@ -986,7 +1030,6 @@ class DPTOutputAggregateAdapter(nn.Module):
         attn_input1 = torch.cat([attn1, layers[1]], dim=1)
         attn1_out = self.aggregator1(attn_input1) + attn_input1
         attn1_out = self.proj[1](attn1_out)
-        
         
         attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')
         attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear')

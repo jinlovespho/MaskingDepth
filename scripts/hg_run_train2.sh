@@ -1,5 +1,4 @@
 
-
 DATA_ARGS="
 --data_path /media/dataset2/KITTI
 --dataset kitti
@@ -12,7 +11,7 @@ DATA_ARGS="
 
 TRAINING_ARGS="
 --num_epoch 20
---batch_size 1
+--batch_size 8
 --learning_rate 1e-4
 --num_workers 4
 --seed 41
@@ -46,9 +45,9 @@ SAVE_ARGS="
 "
 
 LOGGING_ARGS="
-    --log_tool wandb
+    --log_tool wandba
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server11_gpu0_kitt_croco_attnaggtest_zero05_attntf
+    --wandb_exp_name pho_server11_gpu0_kitti_croco_attnaggtest_zero05_attntf
     --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
@@ -58,7 +57,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=0   python ./train.py        \
+CUDA_VISIBLE_DEVICES=1,2,3,4,5,6,7   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

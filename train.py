@@ -59,6 +59,9 @@ def get_train_args():
     parser.add_argument('--moving_masking', type=str, default='None', choices=['no_grad','no_grad_distill','None','no_grad_topk'])
     parser.add_argument('--masking_threshold', type=float, default=0.1)
     parser.add_argument('--attn_agg_tf', action="store_true")
+    parser.add_argument('--attn_agg_tf_multiscale', action='store_true')
+    parser.add_argument('--attn_agg_tf_cat_out_and_map', action='store_true')
+    
     
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)

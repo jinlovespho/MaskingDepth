@@ -177,6 +177,7 @@ def model_load(train_args, device):
         num_channels = 1
         print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
         
+        breakpoint()
         if train_args.attn_agg:
             head = PixelwiseTaskWithDPT(attn_agg = train_args.attn_agg, hooks_idx=[14,17,20,23], with_pose = train_args.with_pose,residual = train_args.residual, single = train_args.single, args=train_args)
         else:
