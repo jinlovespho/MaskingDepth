@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from typing import Union, Tuple, Iterable, List, Optional, Dict
 from networks.conv4d import Conv4d_Module
-from networks.croco.cats import TransformerAggregator
+from networks.croco.cats import TransformerAggregator, MultiscaleBlock
 from networks.croco.pose_regress import CrossBlock
 from timm.models.layers import DropPath, trunc_normal_
 
@@ -706,22 +706,28 @@ class DPTOutputAggregateAdapter(nn.Module):
 
         self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
 
-        # self.feature_proj = nn.ModuleList([nn.Linear(256, 128) for i in range(4)])
-
-        self.aggregator0 = nn.Sequential( nn.GELU(),
-                                          nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
-        self.aggregator1 = nn.Sequential(nn.GELU(),
-                                        nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
-        self.aggregator2 = nn.Sequential( nn.GELU(),
-                                          nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
-        self.aggregator3 = nn.Sequential( nn.GELU(),
-                                          nn.Conv2d(256+480, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+480, kernel_size=3, stride=1, padding=1))
+        if self.args.attn_agg_tf:
+            self.attention_aggregator0 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+            self.attention_aggregator1 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+            self.attention_aggregator2 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+            self.attention_aggregator3 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
+            
+        feature = 128 if self.args.attn_agg_tf else 480
         
-        self.proj = nn.ModuleList([nn.Conv2d(256+480, 480,  kernel_size=1, stride=1, padding=0) for i in range(4)])
+        self.aggregator0 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+        self.aggregator1 = nn.Sequential(nn.GELU(),
+                                        nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+        self.aggregator2 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+        self.aggregator3 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+        
+        self.proj = nn.ModuleList([nn.Conv2d(256+feature, feature,  kernel_size=1, stride=1, padding=0) for i in range(4)])
         
         # self.depth_head0 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
         #                                 nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
@@ -732,10 +738,10 @@ class DPTOutputAggregateAdapter(nn.Module):
         # self.depth_head3 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
         #             nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
         
-        self.depth_head0 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=3, stride=1, padding=1))
-        self.depth_head1 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=3, stride=1, padding=1))
-        self.depth_head2 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=3, stride=1, padding=1))
-        self.depth_head3 = nn.Sequential(nn.Conv2d(480, feature_dim, kernel_size=3, stride=1, padding=1))
+        self.depth_head0 = nn.Sequential(nn.Conv2d(feature, feature_dim, kernel_size=3, stride=1, padding=1))
+        self.depth_head1 = nn.Sequential(nn.Conv2d(feature, feature_dim, kernel_size=3, stride=1, padding=1))
+        self.depth_head2 = nn.Sequential(nn.Conv2d(feature, feature_dim, kernel_size=3, stride=1, padding=1))
+        self.depth_head3 = nn.Sequential(nn.Conv2d(feature, feature_dim, kernel_size=3, stride=1, padding=1))
         
         self.with_pose = with_pose
         if self.with_pose:
@@ -945,12 +951,20 @@ class DPTOutputAggregateAdapter(nn.Module):
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
-        
-        attn_maps = [rearrange(l.mean(dim=1), 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
-        attn_sizes = [(6,20),(12,40),(24,80),(48,160)]
-        # attn_maps = [rearrange(l, 'b c nh nw -> b (nh nw) c', nh=attn_sizes[idx][0], nw=attn_sizes[idx][1]) for idx, l in enumerate(attn_maps)]
 
-        # layer3 = self.feature_proj[3](rearrange(layers[3], 'b c nh nw -> b (nh nw) c')).unsqueeze(dim=1)
+        attn_maps = [l.mean(dim=1) for l in attn_maps]
+
+        if self.args.attn_agg_tf:
+            attn_maps[3] = self.attention_aggregator3(attn_maps[3].unsqueeze(dim=1)).squeeze(dim=1)
+            attn_maps[2] = self.attention_aggregator2(attn_maps[2].unsqueeze(dim=1)).squeeze(dim=1)
+            attn_maps[1] = self.attention_aggregator1(attn_maps[1].unsqueeze(dim=1)).squeeze(dim=1)
+            attn_maps[0] = self.attention_aggregator0(attn_maps[0].unsqueeze(dim=1)).squeeze(dim=1)
+            
+        
+        attn_maps = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
+        attn_sizes = [(6,20),(12,40),(24,80),(48,160)]
+        
+
         
         attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
         attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)

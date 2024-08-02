@@ -37,8 +37,7 @@ MODEL_ARGS="
 --attn_agg
 --softmax_attn
 --zero_aug 0.5
---moving_masking no_grad
---masking_threshold 1
+--moving_masking no_grad_topk
 "
 
 SAVE_ARGS="
@@ -48,7 +47,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggtest_zero05_thres1
+    --wandb_exp_name hg_croco_basebase_attnaggtest_zero05_topk
     --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
 "
 

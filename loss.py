@@ -245,6 +245,25 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
             
             if train_args.log_tool == 'wandb' and mode==EVAL: 
                 wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
+
+        if train_args.moving_masking == 'no_grad_topk':
+            disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
+            _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
+            abs_error = torch.abs(model_outs['pred_depth',0, scale] - depth) / depth
+
+            ## mask out top k
+            B,C,H,W = abs_error.shape
+            moving_mask = abs_error.view(-1)
+            topk = int(moving_mask.shape[0]*0.2)
+            _, idx = torch.topk(moving_mask, topk)
+            moving_mask = torch.ones_like(moving_mask)
+            moving_mask[idx] = 0
+            moving_mask = moving_mask.view(B,C,H,W)
+
+            to_optimise = moving_mask.detach() * to_optimise
+            
+            if train_args.log_tool == 'wandb' and mode==EVAL: 
+                wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
                 
         elif train_args.moving_masking == 'no_grad_distill' and epoch>=1:
             disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
