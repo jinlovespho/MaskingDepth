@@ -110,6 +110,7 @@ def model_forward(inputs, model, train_args, mode, with_pose = False):
         
         return outputs, outputs_back
     
+    inputs['tt_aug'] = torch.zeros(inputs['color_aug',0,0].shape[0])
     
     if train_args.model_info == 'croco':
         if mode == TRAIN:
@@ -119,6 +120,7 @@ def model_forward(inputs, model, train_args, mode, with_pose = False):
                 rand_num = random.random()
                 if rand_num < train_args.zero_aug:
                     source[batch] = target[batch]
+                    inputs['tt_aug'][batch] = 1
                     
             outputs = model['depth'](target, source, mode, intrinsics=inputs['K',0])
         else:
@@ -253,17 +255,21 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
 
             ## mask out top k
             B,C,H,W = abs_error.shape
-            moving_mask = abs_error.view(-1)
-            topk = int(moving_mask.shape[0]*0.2)
-            _, idx = torch.topk(moving_mask, topk)
-            moving_mask = torch.ones_like(moving_mask)
-            moving_mask[idx] = 0
-            moving_mask = moving_mask.view(B,C,H,W)
+            moving_masks = torch.ones_like(abs_error)
+            for i in range(B):
+                moving_mask = abs_error[i].view(-1)
+                topk = int(moving_mask.shape[0]*0.2)
+                _, idx = torch.topk(moving_mask, topk)
+                moving_mask = torch.ones_like(moving_mask)
+                if inputs['tt_aug'][i] == 0:
+                    moving_mask[idx] = 0
+                moving_masks[i] = moving_mask.view(C,H,W)
 
-            to_optimise = moving_mask.detach() * to_optimise
+            
+            to_optimise = moving_masks.detach() * to_optimise
             
             if train_args.log_tool == 'wandb' and mode==EVAL: 
-                wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
+                wandb.log({"moving_mask": wandb.Image(moving_masks[0].detach().cpu().numpy()*100)})
                 
         elif train_args.moving_masking == 'no_grad_distill' and epoch>=1:
             disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
