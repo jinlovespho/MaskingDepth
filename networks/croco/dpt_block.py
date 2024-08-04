@@ -1020,7 +1020,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         attn2 = attn2 + attn_maps[2]
         
         attn_input2 = torch.cat([attn2, layers[2]], dim=1)
-        attn2_out = self.aggregator1(attn_input2) + attn_input2
+        attn2_out = self.aggregator2(attn_input2) + attn_input2
         attn2_out = self.proj[2](attn2_out)
 
         attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
@@ -1036,7 +1036,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         attn0 = attn0 + attn_maps[0]
         
         attn_input0 = torch.cat([attn0, layers[0]], dim=1)
-        attn0_out = self.aggregator3(attn_input0) + attn_input0
+        attn0_out = self.aggregator0(attn_input0) + attn_input0
         attn0_out = self.proj[0](attn0_out)
         
         path_4 = self.depth_head3(attn3_out)
