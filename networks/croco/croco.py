@@ -145,6 +145,7 @@ class CroCoNet(nn.Module):
         # apply masking 
         B,N,C = x.size()
         if do_mask:
+            pos = pos.cuda()
             masks = self.mask_generator(x)
             x = x[~masks].view(B, -1, C)
             posvis = pos[~masks].view(B, -1, 2)
