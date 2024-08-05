@@ -245,8 +245,8 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
             
             to_optimise = moving_mask.detach() * to_optimise
             
-            if train_args.log_tool == 'wandb' and mode==EVAL: 
-                wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
+            # if train_args.log_tool == 'wandb' and mode==EVAL: 
+            #     wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
 
         if train_args.moving_masking == 'no_grad_topk':
             disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
@@ -268,8 +268,8 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
             
             to_optimise = moving_masks.detach() * to_optimise
             
-            if train_args.log_tool == 'wandb' and mode==EVAL: 
-                wandb.log({"moving_mask": wandb.Image(moving_mask[0].detach().cpu().numpy()*100)})
+            # if train_args.log_tool == 'wandb' and mode==EVAL: 
+            #     wandb.log({"moving_mask": wandb.Image(moving_masks[0].detach().cpu().numpy()*100)})
                 
         elif train_args.moving_masking == 'no_grad_distill' and epoch>=1:
             disp = F.interpolate(model_outs_tt['pred_disp',scale], target.shape[-2:], mode="bilinear", align_corners = False)
