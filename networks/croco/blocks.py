@@ -165,9 +165,10 @@ class CrossAttention(nn.Module):
         attn_tmp = attn.clone().detach()
         attn = attn.softmax(dim=-1)
         
+        # breakpoint()
         if self.softmax_attn:
             attn_tmp = attn.clone().detach()
-            attn_tmp[:,:,:,441] = 0
+            # attn_tmp[:,:,:,441] = 0
             
         
         attn = self.attn_drop(attn)

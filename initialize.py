@@ -9,6 +9,7 @@ import numpy as np
 
 import datasets
 
+import datasets.cityscapes_dataset
 import networks.monodepth2_networks
 
 import utils
@@ -168,7 +169,7 @@ def model_load(train_args, device):
     elif train_args.model_info == 'croco':
         ckpt = torch.load(train_args.pretrained_path, 'cpu')
         croco_args = croco_args_from_ckpt(ckpt)
-        croco_args['img_size'] = (192, 640)
+        croco_args['img_size'] = (train_args.re_height, train_args.re_width)
         croco_args['mask_ratio'] = train_args.mask_ratio
         # croco_args['attn_conv4d'] = train_args.attn_conv4d
         croco_args['args'] = train_args
@@ -353,23 +354,31 @@ def data_loader(train_args, batch_size, num_workers):
                     "kitti_depth": datasets.KITTIDepthDataset,
                     "nyu": datasets.NYUDataset,
                     "virtual_kitti": datasets.Virtual_Kitti,
-                    "kitti_depth_multiframe":datasets.KITTIDepthMultiFrameDataset }
+                    "kitti_depth_multiframe":datasets.KITTIDepthMultiFrameDataset,
+                    'cityscapes':datasets.cityscapes_dataset.CityscapesDataset}
 
     dataset = datasets_dict[train_args.dataset]
     fpath = os.path.join(os.path.dirname(__file__), "splits", train_args.splits, "{}_files.txt")
     
     train_filenames = utils.readlines(fpath.format("train"))
-    val_filenames   = utils.readlines(fpath.format("val"))
+    
+    if train_args.splits == 'cityscapes':
+        val_filenames   = utils.readlines(fpath.format("test"))
+    else:
+        val_filenames   = utils.readlines(fpath.format("val"))
     
     print('DATASET: ', dataset)
     # breakpoint()
     
     train_ds = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, 
                        train_args.frame_ids, 4, is_train=True, img_ext=train_args.img_ext)
-    
-    val_ds =   dataset(train_args.data_path, val_filenames, train_args.re_height, train_args.re_width, 
-                       train_args.frame_ids, 4, is_train=True, img_ext=train_args.img_ext)
-    
+
+    if train_args.dataset == 'cityscapes':
+        val_ds =   dataset(train_args.cs_val_path, val_filenames, train_args.re_height, train_args.re_width, 
+                        train_args.frame_ids, 4, is_train=False, img_ext=train_args.img_ext)
+    else:
+        val_ds =   dataset(train_args.data_path, val_filenames, train_args.re_height, train_args.re_width, 
+                        train_args.frame_ids, 4, is_train=False, img_ext=train_args.img_ext)
     
     # if train_args.dataset == 'kitti_depth_multiframe':
     #     train_dataset = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, use_box = True, 

@@ -1,20 +1,24 @@
 
 
 DATA_ARGS="
---data_path /home/cvlab08/projects/data/KITTI
---dataset kitti
---splits eigen_zhou
---img_ext .jpg 
---re_height 192 
---re_width 640 
+    --data_path /media/dataset2/cityscapes/cityscapes_preprocessed
+    --dataset cityscapes
+    --splits cityscapes
+    --cs_val_path /media/dataset2/cityscapes
+    --cs_gt_path /media/dataset2/cityscapes/gt_depths
+    --img_ext .jpg 
+    --re_height 192
+    --re_width 512
 "
+
+# cs resol (128,416) or (192,512)
 
 
 TRAINING_ARGS="
---num_epoch 30
---batch_size 8
---learning_rate 5e-5
---num_workers 4
+--num_epoch 20
+--batch_size 10
+--learning_rate 1e-4
+--num_workers 0
 --seed 41
 "
 
@@ -33,7 +37,7 @@ MODEL_ARGS="
 --model_info croco
 --vit_type vit_base
 --pretrained_weight vit_base_384
---pretrained_path ./CroCo_V2_ViTBase_BaseDecoder.pth
+--pretrained_path ./pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth
 --attn_agg
 --softmax_attn
 --zero_aug 0.5
@@ -47,9 +51,9 @@ SAVE_ARGS="
 
 LOGGING_ARGS="
     --log_tool wandb
-    --wandb_proj_name 20240612_MultiFrame_Depth
-    --wandb_exp_name hg_croco_basebase_attnaggtest_zero05_topk_tf_lr5e5_fix
-    --log_path /home/cvlab08/projects/data/hg_log/selfsup_depth
+    --wandb_proj_name 20240719_mf_depth
+    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_attnaggtest_zero05_topk_tf_lr1e4_fix_res192_512
+    --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
 ETC_ARGS="
@@ -57,7 +61,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=0   python ./train.py        \
+CUDA_VISIBLE_DEVICES=3   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

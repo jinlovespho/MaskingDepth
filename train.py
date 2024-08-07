@@ -7,10 +7,12 @@ import wandb
 import initialize
 import utils
 import loss
-from eval import visualize, eval_metric, get_eval_dict
+from eval import visualize, eval_metric, get_eval_dict, visualize_cs
 
 from torchvision.utils import save_image
 from networks.monodepth2_networks import compute_depth_losses
+import numpy as np
+import torch.nn.functional as F
 
 
 TRAIN = 0
@@ -21,8 +23,8 @@ def get_train_args():
     parser = argparse.ArgumentParser(description='args')
     # Data args 
     parser.add_argument('--data_path',      type=str,   default='/path/to/data')
-    parser.add_argument("--dataset",        type=str,   choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test", 'kitti_depth_multiframe'])
-    parser.add_argument("--splits",         type=str,   choices=["eigen_zhou", "eigen_full", "odom", "benchmark", "eigen_temp"])
+    parser.add_argument("--dataset",        type=str,   choices=["kitti", "kitti_odom", "kitti_depth", "kitti_test", 'kitti_depth_multiframe', 'cityscapes'])
+    parser.add_argument("--splits",         type=str,   choices=["eigen_zhou", "eigen_full", "odom", "benchmark", "eigen_temp", 'cityscapes'])
     parser.add_argument('--img_ext',        type=str)
     parser.add_argument('--re_height',      type=int,   default=192)
     parser.add_argument('--re_width',       type=int,   default=640)   
@@ -73,8 +75,36 @@ def get_train_args():
     # Etc args
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--load_weight_path', type=str, default=None)
+    
+    
+    parser.add_argument('--cs_val_path', type=str)
+    parser.add_argument('--cs_gt_path', type=str)
+    
+    
     args = parser.parse_args()
     return args
+
+
+def compute_depth_errors(gt, pred):
+    """Computation of error metrics between predicted and ground truth depths
+    """
+    thresh = torch.max((gt / pred), (pred / gt))
+    a1 = (thresh < 1.25     ).float().mean()
+    a2 = (thresh < 1.25 ** 2).float().mean()
+    a3 = (thresh < 1.25 ** 3).float().mean()
+
+    rmse = (gt - pred) ** 2
+    rmse = torch.sqrt(rmse.mean())
+
+    rmse_log = (torch.log(gt) - torch.log(pred)) ** 2
+    rmse_log = torch.sqrt(rmse_log.mean())
+
+    abs_rel = torch.mean(torch.abs(gt - pred) / gt)
+
+    sq_rel = torch.mean((gt - pred) ** 2 / gt)
+
+    return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
+
 
 
 if __name__ == "__main__":
@@ -188,6 +218,8 @@ if __name__ == "__main__":
             eval_error = []
             pred_depths = []
             gt_depths = []
+            
+            inputs_color=[]
 
             # val loop
             tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_args.num_epoch}')
@@ -203,20 +235,89 @@ if __name__ == "__main__":
             
                 # val forward pass
                 total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL, epoch=epoch)
-                
                 eval_loss += total_loss
                 
-                gt_depth = inputs['depth_gt']
-                pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
-                gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
+                if train_args.dataset == 'cityscapes':
+                    pred_depths.extend(pred_depth_orig.squeeze(1))
+                    inputs_color.extend(inputs['color',0,0].squeeze(1))
+                
+                else:
+                    gt_depth = inputs['depth_gt']
+                    gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
+                    pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
+                    
             
-            eval_error = eval_metric(pred_depths, gt_depths, train_args)  
-            error_dict = get_eval_dict(eval_error)
-            error_dict["val_loss"] = eval_loss / len(val_loader)                
+            if train_args.dataset == 'cityscapes':
+                MIN_DEPTH = 1e-3
+                MAX_DEPTH = 80
+                gt_path = train_args.cs_gt_path
+                num_gt_samples = len(val_loader.dataset)
+                
+                errors = []
+                ratios = []
+                vis_gt_depths=[]
+                vis_pred_depths=[]
+                vis_inputs=[]
+                for i in range(num_gt_samples):
+                    gt_depth = np.load(os.path.join(gt_path, str(i).zfill(3) + '_depth.npy'))
+                    gt_height, gt_width = gt_depth.shape[:2]
+                    # crop ground truth to remove ego car -> this has happened in the dataloader for inputs
+                    gt_height = int(round(gt_height * 0.75))
+                    gt_depth = torch.from_numpy(gt_depth[:gt_height]).cuda()    # 768, 2048
+                    pred_depth = pred_depths[i] # 768, 2048
+                    
+                    vis_input = inputs_color[i].unsqueeze(dim=0)
+                    vis_input = F.interpolate(vis_input, (gt_height, gt_width), mode='bilinear', align_corners=True)      
+                    vis_input = vis_input.squeeze(dim=0)
+                    
+                    # when evaluating cityscapes, we centre crop to the middle 50% of the image.
+                    # Bottom 25% has already been removed - so crop the sides and the top here
+                    gt_depth = gt_depth[256:, 192:1856]
+                    pred_depth = pred_depth[256:, 192:1856]
+                    vis_input = vis_input[:, 256:, 192:1856]
+                    
+                    vis_gt_depths.append(gt_depth)
+                    vis_pred_depths.append(pred_depth)
+                    vis_inputs.append(vis_input)
+
+                    mask = (gt_depth > MIN_DEPTH) & (gt_depth < MAX_DEPTH)
+
+                    pred_depth = pred_depth[mask]
+                    gt_depth = gt_depth[mask]
+
+                    ratio = torch.median(gt_depth) / torch.median(pred_depth)
+                    ratios.append(ratio)
+                    pred_depth *= ratio  
+                    pred_depth = torch.clamp(pred_depth, MIN_DEPTH, MAX_DEPTH)
+                    errors.append(compute_depth_errors(gt_depth, pred_depth)) 
+                    
+                ratios = torch.tensor(ratios)
+                med = torch.median(ratios)
+                std = torch.std(ratios / med)
+                print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, std))
+
+                mean_errors = torch.tensor(errors).mean(0)
+
+                print(("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
+                print(("{: 8.3f} | " * 7 + "\n").format(*mean_errors.tolist()))  
+                
+                depth_metric_names = ["de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
+                error_dict = {}
+                for error_name, error_value in zip(depth_metric_names, mean_errors):
+                    error_dict[error_name] = error_value.item()
+                error_dict["val_loss"] = eval_loss / len(val_loader)    
+                
+            else:                
+                eval_error = eval_metric(pred_depths, gt_depths, train_args)  
+                error_dict = get_eval_dict(eval_error)
+                error_dict["val_loss"] = eval_loss / len(val_loader)                
 
             if train_args.log_tool == 'wandb':
                 error_dict["epoch"] = (epoch+1)
                 wandb.log(error_dict)
-                visualize(inputs, pred_depth_orig, model_outs, train_args)
+                if train_args.dataset == 'cityscapes':
+                    visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, model_outs, train_args)
+                else:
+                    visualize(inputs, pred_depth_orig, model_outs, train_args)
                 
     print('End of Epoch')

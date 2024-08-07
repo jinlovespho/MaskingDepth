@@ -706,12 +706,14 @@ class DPTOutputAggregateAdapter(nn.Module):
 
         self.scratch = make_scratch(layer_dims, feature_dim, groups=1, expand=False)
 
+        attn_map_resol = int(self.args.re_height * self.args.re_width / 16 / 16)
+
         if self.args.attn_agg_tf:
-            self.attention_aggregator0 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            self.attention_aggregator1 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            self.attention_aggregator2 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            self.attention_aggregator3 = nn.Sequential(MultiscaleBlock(480, 8, 480), MultiscaleBlock(480, 8, 480),nn.Linear(480, 128))
-            
+            self.attention_aggregator0 = nn.Sequential(MultiscaleBlock(attn_map_resol, 8, attn_map_resol), MultiscaleBlock(attn_map_resol, 8, attn_map_resol), nn.Linear(attn_map_resol, 128))
+            self.attention_aggregator1 = nn.Sequential(MultiscaleBlock(attn_map_resol, 8, attn_map_resol), MultiscaleBlock(attn_map_resol, 8, attn_map_resol), nn.Linear(attn_map_resol, 128))
+            self.attention_aggregator2 = nn.Sequential(MultiscaleBlock(attn_map_resol, 8, attn_map_resol), MultiscaleBlock(attn_map_resol, 8, attn_map_resol), nn.Linear(attn_map_resol, 128))
+            self.attention_aggregator3 = nn.Sequential(MultiscaleBlock(attn_map_resol, 8, attn_map_resol), MultiscaleBlock(attn_map_resol, 8, attn_map_resol), nn.Linear(attn_map_resol, 128))
+        
         feature = 128 if self.args.attn_agg_tf else 480
         
         self.aggregator0 = nn.Sequential( nn.GELU(),
@@ -951,7 +953,7 @@ class DPTOutputAggregateAdapter(nn.Module):
         layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
-
+        
         attn_maps = [l.mean(dim=1) for l in attn_maps]
 
         if self.args.attn_agg_tf:
@@ -962,9 +964,10 @@ class DPTOutputAggregateAdapter(nn.Module):
             
         
         attn_maps = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
-        attn_sizes = [(6,20),(12,40),(24,80),(48,160)]
-        
-
+        attn_sizes = [ (self.args.re_height//32,self.args.re_width//32),
+                       (self.args.re_height//16,self.args.re_width//16),
+                       (self.args.re_height//8,self.args.re_width//8),
+                       (self.args.re_height//4,self.args.re_width//4) ]
         
         attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
         attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)

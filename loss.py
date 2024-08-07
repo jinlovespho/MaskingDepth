@@ -32,15 +32,19 @@ def compute_loss(inputs, model, train_args, mode = TRAIN,epoch=0):
     losses = {}
     total_loss = 0
     
-    orig_h, orig_w = inputs['depth_gt'].shape[-2:]
-    gt_depth = inputs['depth_gt']
+    if train_args.dataset == 'cityscapes':
+        orig_h, orig_w = int(1024*0.75), 2048     # cityscapes gt height and width
+    else:
+        orig_h, orig_w = inputs['depth_gt'].shape[-2:]
+        gt_depth = inputs['depth_gt']
     
     # forward pass 
     if train_args.with_pose:
         model_outs, model_outs_back = model_forward(inputs, model, train_args, mode, train_args.with_pose)  # (b,1,192,640)
     else:
         model_outs = model_forward(inputs, model, train_args, mode, train_args.with_pose)  # (b,1,192,640)
-        
+    
+    # breakpoint()
     if 'no_grad' in train_args.moving_masking:
         with torch.no_grad():
             input_tt = {('color_aug',0,0):inputs['color_aug',0,0].clone(), ('color_aug',-1,0):inputs['color_aug',0,0].clone(), ('K',0):inputs['K',0].clone(),\
