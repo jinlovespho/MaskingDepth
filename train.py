@@ -162,7 +162,16 @@ if __name__ == "__main__":
                     config = train_args,
                     dir=train_args.log_path)
 
-    # train and val
+
+    # CITYSCAPE VIS INDEX
+    val_tot_sample = len(val_loader.dataset)
+    rnd_idx = torch.rand(val_tot_sample).argsort()
+    val_vis_sample = 8 if 8 < train_args.batch_size else train_args.batch_size   
+    vis_rnd_idx = rnd_idx[:val_vis_sample]
+    vis_rnd_idx = vis_rnd_idx.tolist()
+    
+    
+    # train and val EPOCH
     step = 0
     for epoch in range(train_args.num_epoch):
 
@@ -220,11 +229,11 @@ if __name__ == "__main__":
             gt_depths = []
             
             inputs_color=[]
-
+            
             # val loop
             tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_args.num_epoch}')
             for i, inputs in enumerate(tqdm_val):
-                
+                # print(torch.cuda.memory_allocated()/1e9)    # for GPU mem tracking
                 total_loss = 0
                 losses = {}
                 
@@ -232,21 +241,20 @@ if __name__ == "__main__":
                 for key, val in inputs.items():
                     if type(val) == torch.Tensor:   # not all inputs are tensors
                         inputs[key] = val.to(device)
-            
+
                 # val forward pass
                 total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL, epoch=epoch)
                 eval_loss += total_loss
                 
                 if train_args.dataset == 'cityscapes':
-                    pred_depths.extend(pred_depth_orig.squeeze(1))
-                    inputs_color.extend(inputs['color',0,0].squeeze(1))
+                    pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu())
+                    inputs_color.extend(inputs['color',0,0].squeeze(1).detach().cpu())
                 
                 else:
                     gt_depth = inputs['depth_gt']
                     gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
                     pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
                     
-            
             if train_args.dataset == 'cityscapes':
                 MIN_DEPTH = 1e-3
                 MAX_DEPTH = 80
@@ -258,12 +266,14 @@ if __name__ == "__main__":
                 vis_gt_depths=[]
                 vis_pred_depths=[]
                 vis_inputs=[]
-                for i in range(num_gt_samples):
+                
+                cs_eval_tqdm = tqdm(range(num_gt_samples), desc=f'CityScapes Eval Epoch: {epoch+1}/{train_args.num_epoch}')
+                for i in cs_eval_tqdm:
                     gt_depth = np.load(os.path.join(gt_path, str(i).zfill(3) + '_depth.npy'))
                     gt_height, gt_width = gt_depth.shape[:2]
                     # crop ground truth to remove ego car -> this has happened in the dataloader for inputs
                     gt_height = int(round(gt_height * 0.75))
-                    gt_depth = torch.from_numpy(gt_depth[:gt_height]).cuda()    # 768, 2048
+                    gt_depth = torch.from_numpy(gt_depth[:gt_height])    # 768, 2048
                     pred_depth = pred_depths[i] # 768, 2048
                     
                     vis_input = inputs_color[i].unsqueeze(dim=0)
@@ -276,9 +286,12 @@ if __name__ == "__main__":
                     pred_depth = pred_depth[256:, 192:1856]
                     vis_input = vis_input[:, 256:, 192:1856]
                     
-                    vis_gt_depths.append(gt_depth)
-                    vis_pred_depths.append(pred_depth)
-                    vis_inputs.append(vis_input)
+                    if i in vis_rnd_idx:
+                        # print(vis_rnd_idx)
+                        # print(i)
+                        vis_gt_depths.append(gt_depth)
+                        vis_pred_depths.append(pred_depth)
+                        vis_inputs.append(vis_input)
 
                     mask = (gt_depth > MIN_DEPTH) & (gt_depth < MAX_DEPTH)
 

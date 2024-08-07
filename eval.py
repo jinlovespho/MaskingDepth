@@ -330,11 +330,9 @@ def compute_errors(gt, pred):
 # visualize on wandb
 def visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, model_outs, train_args):
 
-    num_vis = 8
-    num = num_vis if num_vis < train_args.batch_size else train_args.batch_size   
-    vis_rnd_idx = torch.rand(num).argsort()
+    num_vis_sample = len(vis_inputs)
     
-    for i in vis_rnd_idx.tolist():
+    for i in range(num_vis_sample):
         wandb_eval_dict = {}
         vis1 = []
         vis2 = []
