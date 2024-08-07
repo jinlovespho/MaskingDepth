@@ -229,6 +229,7 @@ if __name__ == "__main__":
             gt_depths = []
             
             inputs_color=[]
+            mving_msks=[]
             
             # val loop
             tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: {epoch+1}/{train_args.num_epoch}')
@@ -248,78 +249,157 @@ if __name__ == "__main__":
                 
                 if train_args.dataset == 'cityscapes':
                     pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu())
-                    inputs_color.extend(inputs['color',0,0].squeeze(1).detach().cpu())
+                    inputs_color.extend(inputs['color',0,0].detach().cpu())
+                    mving_msks.extend(inputs['doj_mask'].squeeze(1).detach().cpu())
                 
                 else:
                     gt_depth = inputs['depth_gt']
                     gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
                     pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
-                    
+                
             if train_args.dataset == 'cityscapes':
                 MIN_DEPTH = 1e-3
                 MAX_DEPTH = 80
                 gt_path = train_args.cs_gt_path
                 num_gt_samples = len(val_loader.dataset)
                 
-                errors = []
-                ratios = []
+                all_errors = []     # dynamic and static, normal
+                all_ratios = []
+                
+                dynamic_errors=[]
+                dynamic_ratios=[]
+                
+                static_errors=[]
+                static_ratios=[]
+                
+                
                 vis_gt_depths=[]
                 vis_pred_depths=[]
                 vis_inputs=[]
+                vis_mving_msks=[]
                 
-                cs_eval_tqdm = tqdm(range(num_gt_samples), desc=f'CityScapes Eval Epoch: {epoch+1}/{train_args.num_epoch}')
+                cs_eval_tqdm = tqdm(range(len(pred_depths)), desc=f'CityScapes Eval Epoch: {epoch+1}/{train_args.num_epoch}')
                 for i in cs_eval_tqdm:
-                    gt_depth = np.load(os.path.join(gt_path, str(i).zfill(3) + '_depth.npy'))
-                    gt_height, gt_width = gt_depth.shape[:2]
+                    gt_depth = np.load(os.path.join(gt_path, str(i).zfill(3) + '_depth.npy'))   # 1024 2048
+                    gt_height, gt_width = gt_depth.shape[:2]    # 1024 2048
                     # crop ground truth to remove ego car -> this has happened in the dataloader for inputs
-                    gt_height = int(round(gt_height * 0.75))
+                    gt_height = int(round(gt_height * 0.75))    # 768
                     gt_depth = torch.from_numpy(gt_depth[:gt_height])    # 768, 2048
                     pred_depth = pred_depths[i] # 768, 2048
                     
-                    vis_input = inputs_color[i].unsqueeze(dim=0)
+                    vis_input = inputs_color[i].unsqueeze(dim=0)    # 3 128 416 or 3 192 512
                     vis_input = F.interpolate(vis_input, (gt_height, gt_width), mode='bilinear', align_corners=True)      
-                    vis_input = vis_input.squeeze(dim=0)
+                    vis_input = vis_input.squeeze(dim=0)    # 3 768 2048
+
+                    mving_msk = mving_msks[i].unsqueeze(dim=0).unsqueeze(dim=0) # 
+                    mving_msk = F.interpolate(mving_msk, (gt_height, gt_width), mode='bilinear', align_corners=True)
+                    mving_msk = mving_msk.squeeze() # 768 2048
                     
                     # when evaluating cityscapes, we centre crop to the middle 50% of the image.
                     # Bottom 25% has already been removed - so crop the sides and the top here
-                    gt_depth = gt_depth[256:, 192:1856]
-                    pred_depth = pred_depth[256:, 192:1856]
-                    vis_input = vis_input[:, 256:, 192:1856]
+                    gt_depth = gt_depth[256:, 192:1856] # 512 1664
+                    pred_depth = pred_depth[256:, 192:1856] # 512 1664
+                    vis_input = vis_input[:, 256:, 192:1856]    # 3 512 1664
+                    mving_msk = mving_msk[256:, 192:1856]   # 512 1664
                     
                     if i in vis_rnd_idx:
+                        # breakpoint()
                         # print(vis_rnd_idx)
                         # print(i)
                         vis_gt_depths.append(gt_depth)
                         vis_pred_depths.append(pred_depth)
                         vis_inputs.append(vis_input)
+                        vis_mving_msks.append(mving_msk)
 
-                    mask = (gt_depth > MIN_DEPTH) & (gt_depth < MAX_DEPTH)
-
-                    pred_depth = pred_depth[mask]
-                    gt_depth = gt_depth[mask]
-
-                    ratio = torch.median(gt_depth) / torch.median(pred_depth)
-                    ratios.append(ratio)
-                    pred_depth *= ratio  
-                    pred_depth = torch.clamp(pred_depth, MIN_DEPTH, MAX_DEPTH)
-                    errors.append(compute_depth_errors(gt_depth, pred_depth)) 
+                    mask = (gt_depth > MIN_DEPTH) & (gt_depth < MAX_DEPTH)  # 512, 1664
+                    dynamic_msk = mask & mving_msk.bool() 
+                    static_msk = mask & ~mving_msk.bool()
                     
-                ratios = torch.tensor(ratios)
-                med = torch.median(ratios)
-                std = torch.std(ratios / med)
-                print(" Scaling ratios | med: {:0.3f} | std: {:0.3f}".format(med, std))
+                    all_pred_depth = pred_depth[mask]
+                    all_gt_depth = gt_depth[mask]
+                    all_ratio = torch.median(all_gt_depth) / (torch.median(all_pred_depth) + 1e-6)
+                    all_ratios.append(all_ratio)
+                    all_pred_depth *= all_ratio  
+                    all_pred_depth = torch.clamp(all_pred_depth, MIN_DEPTH, MAX_DEPTH)
+                    all_errors.append(compute_depth_errors(all_gt_depth, all_pred_depth)) 
+                    
+                    
+                    # dynamic mask might not include a moving object ! 
+                    
 
-                mean_errors = torch.tensor(errors).mean(0)
+                        # dynamic_pred_depth = torch.tensor([0.0])
+                        # dynamic_gt_depth = torch.tensor([0.0])
 
-                print(("{:>8} | " * 7).format("abs_rel", "sq_rel", "rmse", "rmse_log", "a1", "a2", "a3"))
-                print(("{: 8.3f} | " * 7 + "\n").format(*mean_errors.tolist()))  
+                    dynamic_pred_depth = pred_depth[dynamic_msk]
+                    dynamic_gt_depth = gt_depth[dynamic_msk]
+                    # if torch.isnan(torch.median(dynamic_pred_depth)):
+                    #     breakpoint()
+                    # if True in torch.isnan(dynamic_pred_depth):
+                    #     breakpoint()
+                    # if dynamic_msk.count_nonzero().item() == 0:
+                    #     breakpoint()
+                    
+                    dynamic_ratio = torch.median(dynamic_gt_depth) / (torch.median(dynamic_pred_depth)+ 1e-6)
+                    dynamic_ratios.append(dynamic_ratio)
+                    dynamic_pred_depth *= dynamic_ratio  
+                    dynamic_pred_depth = torch.clamp(dynamic_pred_depth, MIN_DEPTH, MAX_DEPTH)
+                    dynamic_error = compute_depth_errors(dynamic_gt_depth, dynamic_pred_depth)
+                    if True not in torch.isnan(torch.tensor(dynamic_error)):
+                       dynamic_errors.append(dynamic_error)
+                                        
+                    static_pred_depth = pred_depth[static_msk]
+                    static_gt_depth = gt_depth[static_msk]
+                    static_ratio = torch.median(static_gt_depth) / (torch.median(static_pred_depth)+ 1e-6)
+                    static_ratios.append(static_ratio)
+                    static_pred_depth *= static_ratio  
+                    static_pred_depth = torch.clamp(static_pred_depth, MIN_DEPTH, MAX_DEPTH)
+                    static_errors.append(compute_depth_errors(static_gt_depth, static_pred_depth))
+                                 
+                    
+                all_ratios = torch.tensor(all_ratios)
+                all_med = torch.median(all_ratios)
+                all_std = torch.std(all_ratios / all_med)
+                print(" Scaling all_ratios | all_med: {:0.3f} | all_std: {:0.3f}".format(all_med, all_std))
+                
+                dynamic_ratios = torch.tensor(dynamic_ratios)
+                dynamic_med = torch.median(dynamic_ratios)
+                dynamic_std = torch.std(dynamic_ratios / dynamic_med)
+                print(" Scaling dynamic_ratios | dynamic_med: {:0.3f} | dynamic_std: {:0.3f}".format(dynamic_med, dynamic_std)) 
+                
+                static_ratios = torch.tensor(static_ratios)
+                static_med = torch.median(static_ratios)
+                static_std = torch.std(static_ratios / static_med)  
+                print(" Scaling static_ratios | static_med: {:0.3f} | static_std: {:0.3f}".format(static_med, static_std))
+                
+                all_mean_errors = torch.tensor(all_errors).mean(0)
+                dynamic_mean_errors = torch.tensor(dynamic_errors).mean(0)
+                static_mean_errors = torch.tensor(static_errors).mean(0)
+
+                print(("{:>8} | " * 7).format("all_abs_rel", "all_sq_rel", "all_rmse", "all_rmse_log", "all_a1", "all_a2", "all_a3"))
+                print(("{: 8.3f} | " * 7 + "\n").format(*all_mean_errors.tolist()))  
+                
+                print(("{:>8} | " * 7).format("dyn_abs_rel", "dyn_sq_rel", "dyn_rmse", "dyn_rmse_log", "dyn_a1", "dyn_a2", "dyn_a3"))
+                print(("{: 8.3f} | " * 7 + "\n").format(*dynamic_mean_errors.tolist()))  
+                
+                print(("{:>8} | " * 7).format("stat_abs_rel", "stat_sq_rel", "stat_rmse", "stat_rmse_log", "stat_a1", "stat_a2", "stat_a3"))
+                print(("{: 8.3f} | " * 7 + "\n").format(*static_mean_errors.tolist()))  
                 
                 depth_metric_names = ["de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
                 error_dict = {}
-                for error_name, error_value in zip(depth_metric_names, mean_errors):
+                for error_name, error_value in zip(depth_metric_names, all_mean_errors):
                     error_dict[error_name] = error_value.item()
-                error_dict["val_loss"] = eval_loss / len(val_loader)    
+                error_dict["val_loss"] = eval_loss / len(val_loader)   
                 
+                depth_metric_names = ["dynamic_de/abs_rel", "dynamic_de/sq_rel", "dynamic_de/rms", "dynamic_de/log_rms", "dynamic_da/a1", "dynamic_da/a2", "dynamic_da/a3"]
+                dyn_error_dict = {}
+                for error_name, error_value in zip(depth_metric_names, dynamic_mean_errors):
+                    dyn_error_dict[error_name] = error_value.item()
+                
+                depth_metric_names = ["static_de/abs_rel", "static_de/sq_rel", "static_de/rms", "static_de/log_rms", "static_da/a1", "static_da/a2", "static_da/a3"]
+                stat_error_dict = {}
+                for error_name, error_value in zip(depth_metric_names, static_mean_errors):
+                    stat_error_dict[error_name] = error_value.item()
+                 
             else:                
                 eval_error = eval_metric(pred_depths, gt_depths, train_args)  
                 error_dict = get_eval_dict(eval_error)
@@ -328,8 +408,11 @@ if __name__ == "__main__":
             if train_args.log_tool == 'wandb':
                 error_dict["epoch"] = (epoch+1)
                 wandb.log(error_dict)
+                
                 if train_args.dataset == 'cityscapes':
-                    visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, model_outs, train_args)
+                    wandb.log(dyn_error_dict)
+                    wandb.log(stat_error_dict)
+                    visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, vis_mving_msks, model_outs, train_args)
                 else:
                     visualize(inputs, pred_depth_orig, model_outs, train_args)
                 

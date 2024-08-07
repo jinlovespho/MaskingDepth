@@ -371,11 +371,11 @@ def data_loader(train_args, batch_size, num_workers):
     # breakpoint()
     
     train_ds = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, 
-                       train_args.frame_ids, 4, is_train=True, img_ext=train_args.img_ext)
+                       train_args.frame_ids, 4, is_train=True, doj_mask=False, img_ext=train_args.img_ext)
 
     if train_args.dataset == 'cityscapes':
         val_ds =   dataset(train_args.cs_val_path, val_filenames, train_args.re_height, train_args.re_width, 
-                        train_args.frame_ids, 4, is_train=False, img_ext=train_args.img_ext)
+                        train_args.frame_ids, 4, is_train=False, doj_mask=True, img_ext=train_args.img_ext)
     else:
         val_ds =   dataset(train_args.data_path, val_filenames, train_args.re_height, train_args.re_width, 
                         train_args.frame_ids, 4, is_train=False, img_ext=train_args.img_ext)

@@ -137,7 +137,7 @@ class CityscapesDataset(MonoDataset):
     def get_doj_mask(self, city, frame_name, side, do_flip):
         if side is not None:
             raise ValueError("Cityscapes dataset doesn't know how to deal with sides")
-
+        
         city, seq, frame = frame_name.split('_')
         frame = int(frame)
         if self.is_train:
@@ -145,9 +145,9 @@ class CityscapesDataset(MonoDataset):
             maskm1 = np.load('./train_mask/{}_{}_{}-1.npy'.format(city, seq, frame))
             maskp1 = np.load('./train_mask/{}_{}_{}+1.npy'.format(city, seq, frame))
         else:
-            mask = np.load('./val_mask/{}_{}_{}.npy'.format(city, seq, frame))
-            maskm1 = np.load('./val_mask/{}_{}_{}-1.npy'.format(city, seq, frame))
-            maskp1 = np.load('./val_mask/{}_{}_{}+1.npy'.format(city, seq, frame))
+            mask = np.load(f'{self.data_path}/val_mask/{city}_{seq}_{frame}.npy')
+            maskm1 = np.load(f'{self.data_path}/val_mask/{city}_{seq}_{frame}-1.npy')
+            maskp1 = np.load(f'{self.data_path}/val_mask/{city}_{seq}_{frame}+1.npy')
         
         inputs = {}
         inputs["doj_mask"] = pil.fromarray(mask)

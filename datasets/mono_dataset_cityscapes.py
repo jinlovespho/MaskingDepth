@@ -42,7 +42,7 @@ class MonoDataset(data.Dataset):
                  rotate_range=[-5,5],
                  is_train=False,
                  doj_mask=False,
-                 img_ext='.png'):
+                 img_ext='.png',):
         super(MonoDataset, self).__init__()
 
         self.data_path = data_path

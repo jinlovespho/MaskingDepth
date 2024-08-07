@@ -328,7 +328,7 @@ def compute_errors(gt, pred):
 
 
 # visualize on wandb
-def visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, model_outs, train_args):
+def visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, vis_mving_msks, model_outs, train_args):
 
     num_vis_sample = len(vis_inputs)
     
@@ -359,6 +359,10 @@ def visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, model_outs, train_a
         colormapped_gt_depth = (mapper.to_rgba(gt_depth)[:, :, :3] * 255).astype(np.uint8)
         gt_depth = pil.fromarray(colormapped_gt_depth)
         vis1.append(wandb.Image(gt_depth, caption="GT Depth"))
+        
+        # mving_msk
+        mving_msk = vis_mving_msks[i].cpu().numpy()
+        vis1.append(wandb.Image(mving_msk, caption='CS_Moving Mask'))
   
         
         if train_args.training_loss == 'selfsupervised_img_recon':
