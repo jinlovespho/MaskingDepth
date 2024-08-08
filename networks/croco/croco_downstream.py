@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
+import random
 
 from .croco import CroCoNet
 from .blocks import Conv4d_Module
@@ -92,9 +93,9 @@ class CroCoDownstreamBinocular(CroCoNet):
     #     self.mask_token = None
     #     return
 
-    def _set_prediction_head(self, *args, **kwargs):
-        """ No prediction head for downstream tasks, define your own head """
-        return
+    # def _set_prediction_head(self, *args, **kwargs):
+    #     """ No prediction head for downstream tasks, define your own head """
+    #     return
         
     def encode_image_pairs(self, img1, img2, return_all_blocks=False,mode=0):
         """ run encoder for a pair of images
@@ -102,7 +103,9 @@ class CroCoDownstreamBinocular(CroCoNet):
              than to encode them separately
         """
         ## the two commented lines below is the naive version with separate encoding
-        out, pos, mask1 = self._encode_image(img1, do_mask=(mode==0), return_all_blocks=return_all_blocks)
+        do_mask = (mode==0) #and random.random() > 0.5
+
+        out, pos, mask1 = self._encode_image(img1, do_mask=do_mask, return_all_blocks=return_all_blocks)
         out2, pos2, _ = self._encode_image(img2, do_mask=False, return_all_blocks=False)
         ## and now the faster version
         # out, pos, _ = self._encode_image( torch.cat( (img1,img2), dim=0), do_mask=False, return_all_blocks=return_all_blocks )
@@ -135,8 +138,26 @@ class CroCoDownstreamBinocular(CroCoNet):
             
         if self.args.decoder_freeze:
             decout = [d.detach() for d in decout]
+
+        target = self.patchify(img1)
+        recon_img = self.prediction_head(decout[-1])
+
             
         if self.args.attn_agg:
-            return self.head(decout, img_info, attn_map, intrinsics=intrinsics)
+            output= self.head(decout, img_info, attn_map, intrinsics=intrinsics)
+
+            output['target'] = target
+            output['recon_img'] = recon_img
+            output['mask1'] = mask1
+            
+
+            return output
         
-        return self.head(decout, img_info, attn_map)
+
+        output = self.head(decout, img_info, attn_map)
+
+        output['target'] = target
+        output['recon_img'] = recon_img
+        output['mask1'] = mask1
+        
+        return output

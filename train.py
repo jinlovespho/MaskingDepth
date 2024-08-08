@@ -59,6 +59,7 @@ def get_train_args():
     parser.add_argument('--moving_masking', type=str, default='None', choices=['no_grad','no_grad_distill','None','no_grad_topk'])
     parser.add_argument('--masking_threshold', type=float, default=0.1)
     parser.add_argument('--attn_agg_tf', action="store_true")
+    parser.add_argument('--img_recon_weight', type=float, default=0.0)
     
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
@@ -100,13 +101,19 @@ if __name__ == "__main__":
                                     {"params": params_to_train[encode_index:]}  ], float(train_args.learning_rate))
     else:
         pretrained_params, other_params = [], []
-        for name, param in model['depth'].named_parameters():
-            if 'enc_blocks' in name or 'dec_blocks' in name:
-                pretrained_params.append(param)
-            # if 'enc_blocks' in name:
-                # pretrained_params.append(param)
-            else:
-                other_params.append(param)
+
+        if train_args.pretrained_weight == 'imagenet':
+            for name, param in model['depth'].named_parameters():
+                if 'enc_blocks' in name:
+                    pretrained_params.append(param)
+                else:
+                    other_params.append(param)
+        else:
+            for name, param in model['depth'].named_parameters():
+                if 'enc_blocks' in name or 'dec_blocks' in name:
+                    pretrained_params.append(param)
+                else:
+                    other_params.append(param)
         
         if not train_args.with_pose:
             other_params += model['pose_encoder'].parameters()

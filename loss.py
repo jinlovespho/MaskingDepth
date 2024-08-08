@@ -76,6 +76,18 @@ def compute_loss(inputs, model, train_args, mode = TRAIN,epoch=0):
                 model_outs['pred_disp',i] = (model_outs['pred_disp',i]+model_outs_back['pred_disp',i])/2.
             
 
+        if train_args.img_recon_weight > 0:
+            mask = model_outs['mask1'].cuda()
+            if mask.sum() > 0:
+                img_recon_loss = (model_outs['recon_img'] - model_outs['target'])**2
+                img_recon_loss = img_recon_loss.mean(dim=-1)
+
+                img_recon_loss = (img_recon_loss * mask).sum() / mask.sum()  # mean loss on masked patches
+                losses['img_recon_loss'] = train_args.img_recon_weight * img_recon_loss
+
+
+
+
         recon_loss, mask, _,smooth_loss = compute_selfsup_mono_loss(model_outs, inputs, train_args, fa, ft,ba,bt, front_pose=front_pose, back_pose=back_pose, model_outs_tt=model_outs_tt,mode=mode,epoch=epoch)
         recon_losses.append(recon_loss)
         smooth_losses.append(smooth_loss)
@@ -100,6 +112,7 @@ def compute_loss(inputs, model, train_args, mode = TRAIN,epoch=0):
     if mode == TRAIN:
         return total_loss, losses, model_outs
     else:
+        model_outs['tt'] = model_outs_tt
         return total_loss, losses, pred_depth_orig, model_outs
 
 
@@ -260,12 +273,13 @@ def compute_selfsup_mono_loss(model_outs, inputs, train_args, angle, trans, back
                 moving_mask = abs_error[i].view(-1)
                 topk = int(moving_mask.shape[0]*0.2)
                 _, idx = torch.topk(moving_mask, topk)
+
                 moving_mask = torch.ones_like(moving_mask)
                 if inputs['tt_aug'][i] == 0:
                     moving_mask[idx] = 0
                 moving_masks[i] = moving_mask.view(C,H,W)
 
-            
+                        
             to_optimise = moving_masks.detach() * to_optimise
             
             # if train_args.log_tool == 'wandb' and mode==EVAL: 

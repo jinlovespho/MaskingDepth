@@ -146,6 +146,10 @@ class CroCoNet(nn.Module):
         B,N,C = x.size()
         if do_mask:
             masks = self.mask_generator(x)
+
+            rand_idx = torch.randperm(B)[:int(B*0.5)]
+            masks[rand_idx] = torch.zeros_like(masks[rand_idx])
+
             x = x[~masks].view(B, -1, C)
             posvis = pos[~masks].view(B, -1, 2)
         else:
@@ -212,9 +216,10 @@ class CroCoNet(nn.Module):
         x: (B, L, patch_size**2 *3)
         """
         p = self.patch_embed.patch_size[0]
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+        assert imgs.shape[3] % p ==0 and imgs.shape[2] % p == 0
 
-        h = w = imgs.shape[2] // p
+        # h = w = imgs.shape[2] // p
+        h,w = imgs.shape[2] // p, imgs.shape[3] // p
         x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
         x = torch.einsum('nchpwq->nhwpqc', x)
         x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))

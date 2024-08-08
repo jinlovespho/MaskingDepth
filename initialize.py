@@ -188,7 +188,27 @@ def model_load(train_args, device):
         model['depth'] = CroCoDownstreamBinocular(head, **croco_args)
         interpolate_pos_embed(model['depth'], ckpt['model'])
         
-        msg = model['depth'].load_state_dict(ckpt['model'], strict=False)
+        if train_args.pretrained_weight == 'imagenet':
+            print("imagenet pretrained")
+            import timm
+            vit_model = timm.create_model('vit_base_patch16_224', pretrained=True)
+
+            pretrained_weight = {}
+            for key, value in vit_model.state_dict().items():
+                if 'blocks' in key:
+                    pretrained_weight['enc_'+key]=value
+                elif 'patch_embed' in key:
+                    pretrained_weight[key]=value
+                elif 'norm' in key:
+                    pretrained_weight['enc_'+key]=value
+                else:
+                    print(key)
+
+            del vit_model
+
+            msg = model['depth'].load_state_dict(pretrained_weight, strict=False)
+        else:
+            msg = model['depth'].load_state_dict(ckpt['model'], strict=False)
         
         if not train_args.with_pose:
             model["pose_encoder"] = networks.monodepth2_networks.ResnetEncoder(18,True,num_input_images=2 )
@@ -328,7 +348,7 @@ def model_load(train_args, device):
     
     if train_args.load_weight_path is not None:
         print('load_weight_path')
-        model['depth'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'depth.pth')))
+        model['depth'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'depth.pth')), strict=False)
         model['pose_encoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_encoder.pth')))
         model['pose_decoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_decoder.pth')))
     
