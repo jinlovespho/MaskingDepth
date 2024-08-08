@@ -145,6 +145,7 @@ class CroCoNet(nn.Module):
         # apply masking 
         B,N,C = x.size()
         if do_mask:
+            pos = pos.cuda()
             masks = self.mask_generator(x)
 
             rand_idx = torch.randperm(B)[:int(B*0.5)]
