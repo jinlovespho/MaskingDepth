@@ -7,8 +7,8 @@ DATA_ARGS="
     --cs_val_path /media/dataset2/cityscapes
     --cs_gt_path /media/dataset2/cityscapes/gt_depths
     --img_ext .jpg 
-    --re_height 128
-    --re_width 416
+    --re_height 192
+    --re_width 512
 "
 
 # cs resol (128,416) or (192,512)
@@ -16,8 +16,8 @@ DATA_ARGS="
 
 TRAINING_ARGS="
 --num_epoch 20
---batch_size 16
---learning_rate 1e-4
+--batch_size 8
+--learning_rate 5e-5
 --num_workers 4
 --seed 41
 "
@@ -52,7 +52,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_attnaggtest_zero05_topk_tf_lr1e4_fix_res128_416
+    --wandb_exp_name pho_server5_gpu1_CITYSCAPES_croco_basebase_attnaggtest_zero05_topk_tf_lr5e5_fix_res192_512_mskSameMed
     --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
@@ -61,7 +61,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=3   python ./train.py        \
+CUDA_VISIBLE_DEVICES=1   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \
@@ -70,3 +70,4 @@ CUDA_VISIBLE_DEVICES=3   python ./train.py        \
                                                 ${SAVE_ARGS} \
                                                 ${LOGGING_ARGS} \
                                                 ${ETC_ARGS} \
+ 

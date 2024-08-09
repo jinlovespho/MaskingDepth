@@ -166,7 +166,8 @@ if __name__ == "__main__":
     # CITYSCAPE VIS INDEX
     val_tot_sample = len(val_loader.dataset)
     rnd_idx = torch.rand(val_tot_sample).argsort()
-    val_vis_sample = 8 if 8 < train_args.batch_size else train_args.batch_size   
+    # val_vis_sample = 8 if 8 < train_args.batch_size else train_args.batch_size   
+    val_vis_sample = 12 
     vis_rnd_idx = rnd_idx[:val_vis_sample]
     vis_rnd_idx = vis_rnd_idx.tolist()
     
@@ -317,41 +318,30 @@ if __name__ == "__main__":
                     
                     all_pred_depth = pred_depth[mask]
                     all_gt_depth = gt_depth[mask]
-                    all_ratio = torch.median(all_gt_depth) / (torch.median(all_pred_depth) + 1e-6)
+                    all_ratio = torch.median(all_gt_depth) / torch.median(all_pred_depth)
                     all_ratios.append(all_ratio)
                     all_pred_depth *= all_ratio  
                     all_pred_depth = torch.clamp(all_pred_depth, MIN_DEPTH, MAX_DEPTH)
                     all_errors.append(compute_depth_errors(all_gt_depth, all_pred_depth)) 
                     
-                    
-                    # dynamic mask might not include a moving object ! 
-                    
-
-                        # dynamic_pred_depth = torch.tensor([0.0])
-                        # dynamic_gt_depth = torch.tensor([0.0])
-
                     dynamic_pred_depth = pred_depth[dynamic_msk]
                     dynamic_gt_depth = gt_depth[dynamic_msk]
-                    # if torch.isnan(torch.median(dynamic_pred_depth)):
-                    #     breakpoint()
-                    # if True in torch.isnan(dynamic_pred_depth):
-                    #     breakpoint()
-                    # if dynamic_msk.count_nonzero().item() == 0:
-                    #     breakpoint()
-                    
-                    dynamic_ratio = torch.median(dynamic_gt_depth) / (torch.median(dynamic_pred_depth)+ 1e-6)
+                    dynamic_ratio = torch.median(dynamic_gt_depth) / torch.median(dynamic_pred_depth)
                     dynamic_ratios.append(dynamic_ratio)
-                    dynamic_pred_depth *= dynamic_ratio  
+                    # dynamic_pred_depth *= dynamic_ratio  
+                    dynamic_pred_depth *= all_ratio     # ALL_RATIO
                     dynamic_pred_depth = torch.clamp(dynamic_pred_depth, MIN_DEPTH, MAX_DEPTH)
                     dynamic_error = compute_depth_errors(dynamic_gt_depth, dynamic_pred_depth)
+                    # handle images with no dynamic objects
                     if True not in torch.isnan(torch.tensor(dynamic_error)):
                        dynamic_errors.append(dynamic_error)
                                         
                     static_pred_depth = pred_depth[static_msk]
                     static_gt_depth = gt_depth[static_msk]
-                    static_ratio = torch.median(static_gt_depth) / (torch.median(static_pred_depth)+ 1e-6)
+                    static_ratio = torch.median(static_gt_depth) / torch.median(static_pred_depth)
                     static_ratios.append(static_ratio)
-                    static_pred_depth *= static_ratio  
+                    # static_pred_depth *= static_ratio 
+                    static_pred_depth *= all_ratio      # ALL_RATIO
                     static_pred_depth = torch.clamp(static_pred_depth, MIN_DEPTH, MAX_DEPTH)
                     static_errors.append(compute_depth_errors(static_gt_depth, static_pred_depth))
                                  
