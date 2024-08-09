@@ -162,15 +162,12 @@ if __name__ == "__main__":
                     config = train_args,
                     dir=train_args.log_path)
 
-
     # CITYSCAPE VIS INDEX
     val_tot_sample = len(val_loader.dataset)
     rnd_idx = torch.rand(val_tot_sample).argsort()
-    # val_vis_sample = 8 if 8 < train_args.batch_size else train_args.batch_size   
-    val_vis_sample = 12 
+    val_vis_sample = 8 if train_args.batch_size > 8 else train_args.batch_size   
     vis_rnd_idx = rnd_idx[:val_vis_sample]
     vis_rnd_idx = vis_rnd_idx.tolist()
-    
     
     # train and val EPOCH
     step = 0

@@ -330,9 +330,7 @@ def compute_errors(gt, pred):
 # visualize on wandb
 def visualize_cs(vis_inputs, vis_gt_depths, vis_pred_depths, vis_mving_msks, model_outs, train_args):
 
-    num_vis_sample = len(vis_inputs)
-    
-    for i in range(num_vis_sample):
+    for i in range( len(vis_inputs) ):
         wandb_eval_dict = {}
         vis1 = []
         vis2 = []

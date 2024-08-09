@@ -17,7 +17,7 @@ DATA_ARGS="
 TRAINING_ARGS="
 --num_epoch 20
 --batch_size 8
---learning_rate 5e-5
+--learning_rate 1e-5
 --num_workers 4
 --seed 41
 "
@@ -52,7 +52,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu1_CITYSCAPES_croco_basebase_attnaggtest_zero05_topk_tf_lr5e5_fix_res192_512_mskSameMed
+    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_attnaggtest_zero05_topk_tf_lr1e5_fix_res192_512_mskSameMed
     --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
@@ -61,7 +61,7 @@ ETC_ARGS="
 "
 
 
-CUDA_VISIBLE_DEVICES=1   python ./train.py        \
+CUDA_VISIBLE_DEVICES=3   python ./train.py        \
                                                 ${DATA_ARGS} \
                                                 ${TRAINING_ARGS} \
                                                 ${DEPTH_ARGS} \

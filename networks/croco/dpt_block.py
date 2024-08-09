@@ -938,88 +938,90 @@ class DPTOutputAggregateAdapter(nn.Module):
         # Number of patches in height and width
         N_H = H // (self.stride_level * self.P_H)
         N_W = W // (self.stride_level * self.P_W)
-
+        
         # Hook decoder onto 4 layers from specified ViT layers
-        layers = [encoder_tokens[hook] for hook in self.hooks]
+        layers = [encoder_tokens[hook] for hook in self.hooks]  # b n d (b n 768)
         if self.residual:
             layers = [layers[0]+layers[4], layers[1]+layers[5], layers[2]+layers[6], layers[3]+layers[7]]
-        attn_maps = [(attn_map[hook-12] + attn_map[hook-13] + attn_map[hook-14])/3. for hook in self.hooks]
+        attn_maps = [(attn_map[hook-12] + attn_map[hook-13] + attn_map[hook-14])/3. for hook in self.hooks] # b h n n (b 12 n n)
 
         # Extract only task-relevant tokens and ignore global tokens.
         layers = [self.adapt_tokens(l) for l in layers]
         # Reshape tokens to spatial representation
-        layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers]
+        layers = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in layers] # b n d -> b d h w 
 
-        layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)]
+        layers = [self.act_postprocess[idx](l) for idx, l in enumerate(layers)] # layers[i] 
+        '''
+        layers[0]   b 96 4h 4w
+        layers[1]   b 192 2h 2w
+        layers[2]   b 384 h w
+        layers[3]   b 768 h/2 w/2
+        '''
+        
         # Project layers to chosen feature dim
         layers = [self.scratch.layer_rn[idx](l) for idx, l in enumerate(layers)]
+        '''
+        layers[0]   b 256 4h 4w
+        layers[1]   b 256 2h 2w
+        layers[2]   b 256 h w
+        layers[3]   b 256 h/2 w/2
+        '''
         
-        attn_maps = [l.mean(dim=1) for l in attn_maps]
+        attn_maps = [l.mean(dim=1) for l in attn_maps]  # b n n 
 
         if self.args.attn_agg_tf:
-            attn_maps[3] = self.attention_aggregator3(attn_maps[3].unsqueeze(dim=1)).squeeze(dim=1)
+            attn_maps[3] = self.attention_aggregator3(attn_maps[3].unsqueeze(dim=1)).squeeze(dim=1) # b n d     (b n 128)
             attn_maps[2] = self.attention_aggregator2(attn_maps[2].unsqueeze(dim=1)).squeeze(dim=1)
             attn_maps[1] = self.attention_aggregator1(attn_maps[1].unsqueeze(dim=1)).squeeze(dim=1)
             attn_maps[0] = self.attention_aggregator0(attn_maps[0].unsqueeze(dim=1)).squeeze(dim=1)
             
         
-        attn_maps = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
+        attn_maps = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]   # b d h w   (b 128 h w)
         attn_sizes = [ (self.args.re_height//32,self.args.re_width//32),
                        (self.args.re_height//16,self.args.re_width//16),
                        (self.args.re_height//8,self.args.re_width//8),
                        (self.args.re_height//4,self.args.re_width//4) ]
         
-        attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
-        attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)
-        attn3_out = self.aggregator3(attn_input3) + attn_input3
-        attn3_out = self.proj[3](attn3_out)
+        attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')    # b d h/2 w/2
+        attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)  # b d+256 h/2 w/2
+        attn3_out = self.aggregator3(attn_input3) + attn_input3 # b d+256 h/2 w/2
+        attn3_out = self.proj[3](attn3_out) # b d h/2 w/2
         
-        attn2 = F.interpolate(attn3_out, size=attn_sizes[1], mode='bilinear')
-        attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear')
-        attn2 = attn2 + attn_maps[2]
+        attn2 = F.interpolate(attn3_out, size=attn_sizes[1], mode='bilinear')   # b d h w
+        attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear') # b d h w
+        attn2 = attn2 + attn_maps[2]    # b d h w
         
-        attn_input2 = torch.cat([attn2, layers[2]], dim=1)
-        attn2_out = self.aggregator2(attn_input2) + attn_input2
-        attn2_out = self.proj[2](attn2_out)
+        attn_input2 = torch.cat([attn2, layers[2]], dim=1)  # b d+256 h w
+        attn2_out = self.aggregator2(attn_input2) + attn_input2 # b d+256 h w
+        attn2_out = self.proj[2](attn2_out) # b d h w
 
-        attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
-        attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear')
-        attn1 = attn1 + attn_maps[1]
+        attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')   # b d 2h 2w
+        attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear') # b d 2h 2w
+        attn1 = attn1 + attn_maps[1]    # b d 2h 2w
         
-        attn_input1 = torch.cat([attn1, layers[1]], dim=1)
-        attn1_out = self.aggregator1(attn_input1) + attn_input1
-        attn1_out = self.proj[1](attn1_out)
+        attn_input1 = torch.cat([attn1, layers[1]], dim=1)  # b d+256 2h 2w
+        attn1_out = self.aggregator1(attn_input1) + attn_input1 # b d+256 2h 2w
+        attn1_out = self.proj[1](attn1_out) # b d 2h 2w
         
         
-        attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')
-        attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear')
-        attn0 = attn0 + attn_maps[0]
+        attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')   # b d 4h 4w
+        attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear') # b d 4h 4w
+        attn0 = attn0 + attn_maps[0]    # b d 4h 4w
         
-        attn_input0 = torch.cat([attn0, layers[0]], dim=1)
-        attn0_out = self.aggregator0(attn_input0) + attn_input0
-        attn0_out = self.proj[0](attn0_out)
+        attn_input0 = torch.cat([attn0, layers[0]], dim=1)  # b d+256 4h 4w
+        attn0_out = self.aggregator0(attn_input0) + attn_input0 # b d+256 4h 4w
+        attn0_out = self.proj[0](attn0_out) # b d 4w 4w
         
-        path_4 = self.depth_head3(attn3_out)
-        path_3 = self.depth_head2(attn2_out)
-        path_2 = self.depth_head1(attn1_out)
-        path_1 = self.depth_head0(attn0_out)
+        path_3 = self.depth_head3(attn3_out)    # b 256 h/2 w/2
+        path_2 = self.depth_head2(attn2_out)    # b 256 h w
+        path_1 = self.depth_head1(attn1_out)    # b 256 2h 2w
+        path_0 = self.depth_head0(attn0_out)    # b 256 4h 4w
         
-        if self.with_pose:
-            layers_0 = rearrange(layers[0],'b c nh nw -> b (nh nw) c')
-            B = layers_0.shape[0]
-            pose_feat_ctxt = self.pose_agg(layers_0,corr=attn3,intrinsics=intrinsics).reshape(B,-1)
-            pose_latent_ctxt = self.pose_regressor(pose_feat_ctxt)
-            
-            rot_ctxt, tran_ctxt = self.rotation_regressor(pose_latent_ctxt), self.translation_regressor(pose_latent_ctxt)# Bxn_views x 9, Bxn_views x 3 
-            R_ctxt = self.r6d2mat(rot_ctxt)[:, :3, :3] 
-
-            estimated_rel_pose_ctxt = torch.cat((torch.cat((R_ctxt, tran_ctxt.unsqueeze(-1)), dim=-1),torch.FloatTensor([0,0,0,1]).expand(B,1,-1).to(tran_ctxt.device)), dim=1) #estimated pose between query and context 2
-            outputs['pose'] = estimated_rel_pose_ctxt
         # Output head
         # out = self.head(path_1)
-        outputs['pred_disp',3] = self.conv_disp3(path_4)    # (b,1,12,40)   # passed through sigmoid. [0~1]
-        outputs['pred_disp',2] = self.conv_disp2(path_3)    # (b,1,24,80)
-        outputs['pred_disp',1] = self.conv_disp1(path_2)    # (b,1,48,160)
-        outputs['pred_disp',0] = self.conv_disp0(path_1)    # (b,1,96,320)
+        outputs['pred_disp',3] = self.conv_disp3(path_3)    # (b,1,12,40)   # passed through sigmoid. [0~1]
+        outputs['pred_disp',2] = self.conv_disp2(path_2)    # (b,1,24,80)
+        outputs['pred_disp',1] = self.conv_disp1(path_1)    # (b,1,48,160)
+        outputs['pred_disp',0] = self.conv_disp0(path_0)    # (b,1,96,320)
 
         return outputs
