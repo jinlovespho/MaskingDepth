@@ -124,11 +124,7 @@ if __name__ == "__main__":
     model, params_to_train = initialize.model_load(train_args, device)
     
     #optimizer & scheduler
-    if train_args.model_info != 'croco':
-        encode_index = len(list(model['depth'].module.encoder.parameters()))
-        optimizer = torch.optim.Adam([{"params": params_to_train[:encode_index], "lr": 1e-5}, 
-                                    {"params": params_to_train[encode_index:]}  ], float(train_args.learning_rate))
-    else:
+    if train_args.model_info == 'croco' or train_args.model_info == 'croco_baseline':
         pretrained_params, other_params = [], []
         for name, param in model['depth'].named_parameters():
             if 'enc_blocks' in name or 'dec_blocks' in name:
@@ -152,6 +148,13 @@ if __name__ == "__main__":
         
         optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
                                       {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
+    
+    else:
+        encode_index = len(list(model['depth'].module.encoder.parameters()))
+        optimizer = torch.optim.Adam([{"params": params_to_train[:encode_index], "lr": 1e-5}, 
+                                    {"params": params_to_train[encode_index:]}  ], float(train_args.learning_rate))
+        
+    
     # data loader
     train_ds, valv_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)
                                             

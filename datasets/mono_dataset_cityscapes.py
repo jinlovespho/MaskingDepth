@@ -230,7 +230,7 @@ class MonoDataset(data.Dataset):
                     inputs[("color", i, -1)] = self.get_color(folder, frame_index, other_side, do_flip)
                 else:
                     try:
-                        inputs[("color", i, -1)] = self.get_color(folder, frame_index + i, side, do_flip)
+                        inputs[("color", i, -1)] = self.get_color(folder, frame_index + i, side, do_flip)   # 여기서 cityscapes dataset의 get_color() 수행. cropping! 
                     except:
                         ## for multi-frame testing, if a frame does not have previous or next frame
                         isValid = False
@@ -256,8 +256,9 @@ class MonoDataset(data.Dataset):
                 self.brightness, self.contrast, self.saturation, self.hue)
         else:
             color_aug = (lambda x: x)
-
-        self.preprocess(inputs, color_aug)
+        
+        # breakpoint()
+        self.preprocess(inputs, color_aug)  # 여기서 resizing이 발생
 
         for i in self.frame_idxs:
             del inputs[("color", i, -1)]

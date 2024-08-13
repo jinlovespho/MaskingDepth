@@ -116,7 +116,7 @@ def model_forward(inputs, model, train_args, mode, with_pose = False):
     
     inputs['tt_aug'] = torch.zeros(inputs['color_aug',0,0].shape[0])
     
-    if train_args.model_info == 'croco':
+    if train_args.model_info == 'croco' or train_args.model_info == 'croco_baseline':
         if mode == TRAIN:
             target = inputs['color_aug',0,0].clone()
             source = inputs['color_aug',-1,0].clone()
@@ -125,10 +125,17 @@ def model_forward(inputs, model, train_args, mode, with_pose = False):
                 if rand_num < train_args.zero_aug:
                     source[batch] = target[batch]
                     inputs['tt_aug'][batch] = 1
-                    
-            outputs = model['depth'](target, source, mode, intrinsics=inputs['K',0])
+            
+            if train_args.model_info == 'croco_baseline':
+                outputs = model['depth'](target, source)
+            else:
+                outputs = model['depth'](target, source, mode, intrinsics=inputs['K',0])
         else:
-            outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], mode, intrinsics=inputs['K',0])      
+            if train_args.model_info == 'croco_baseline':
+                outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)])
+            else:
+                outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)], mode, intrinsics=inputs['K',0])      
+    
     else:
         outputs = model['depth'](inputs, train_args, mode)
     return outputs

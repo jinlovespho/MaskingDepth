@@ -94,8 +94,8 @@ class CityscapesDataset(MonoDataset):
                     inputs[key] = inputs[key].transpose(pil.FLIP_LEFT_RIGHT)
         else:
             color = self.loader(self.get_image_path(city, frame_name))
-            w, h = color.size
-            crop_h = h * 3 // 4
+            w, h = color.size   # 2048, 1024
+            crop_h = h * 3 // 4 # 768   for cropping the bottom part of the car
             color = color.crop((0, 0, w, crop_h))
             inputs[("color", 0, -1)] = color
 

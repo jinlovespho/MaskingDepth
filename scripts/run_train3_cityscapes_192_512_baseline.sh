@@ -16,9 +16,9 @@ DATA_ARGS="
 
 TRAINING_ARGS="
 --num_epoch 20
---batch_size 1
---learning_rate 3e-5
---num_workers 0
+--batch_size 8
+--learning_rate 1e-5
+--num_workers 4
 --seed 41
 "
 
@@ -34,15 +34,10 @@ LOSS_ARGS="
 "
 
 MODEL_ARGS="
---model_info croco
+--model_info croco_baseline
 --vit_type vit_base
 --pretrained_weight vit_base_384
 --pretrained_path ./pretrained_weights/CroCo_V2_ViTBase_BaseDecoder.pth
---attn_agg
---softmax_attn
---zero_aug 0.5
---moving_masking no_grad_topk
---attn_agg_tf
 "
 
 SAVE_ARGS="
@@ -50,9 +45,9 @@ SAVE_ARGS="
 "
 
 LOGGING_ARGS="
-    --log_tool wandba
+    --log_tool wandb
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_attnaggtest_zero05_topk_tf_lr3e5_fix_res192_512_mskSameMed
+    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_baseline_lr1e5_res192_512
     --log_path /media/dataset1/jinlovespho/aaai_log
 "
 

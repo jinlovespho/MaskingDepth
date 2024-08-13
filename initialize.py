@@ -197,7 +197,32 @@ def model_load(train_args, device):
                                                                                 num_input_features=1,
                                                                                 num_frames_to_predict_for=2)
     
-    
+    elif train_args.model_info == 'croco_baseline':
+        from networks.croco_baseline_models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt
+        from networks.croco_baseline_models.head_downstream import PixelwiseTaskWithDPT
+        from networks.croco_baseline_models.pos_embed import interpolate_pos_embed
+
+        ckpt = torch.load(train_args.pretrained_path, 'cpu')
+        croco_args = croco_args_from_ckpt(ckpt)
+        croco_args['img_size'] = (train_args.re_height, train_args.re_width)
+        
+        print('Croco args: '+str(croco_args))
+        num_channels = 1
+        print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
+
+        breakpoint()
+        head = PixelwiseTaskWithDPT()
+        head.num_channels=num_channels
+        model['depth'] = CroCoDownstreamBinocular(head, **croco_args)
+        interpolate_pos_embed(model['depth'], ckpt['model'])
+        msg = model['depth'].load_state_dict(ckpt['model'], strict=False)
+        
+        model["pose_encoder"] = networks.monodepth2_networks.ResnetEncoder(18,True,num_input_images=2 )
+        model["pose_decoder"] = networks.monodepth2_networks.PoseDecoder(   model["pose_encoder"].num_ch_enc,
+                                                                            num_input_features=1,
+                                                                            num_frames_to_predict_for=2)
+
+
     # JINLOVESPHO sf_selfsup_try1
     elif train_args.model_info == 'sf_selfsup_try1':
         
