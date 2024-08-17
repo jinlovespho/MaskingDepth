@@ -134,6 +134,19 @@ if __name__ == "__main__":
             else:
                 other_params.append(param)
         
+        # tmp1=[]
+        # tmp2=[]
+        # tmp3=[]
+        # tmp4=[]
+        # for name, param in model['depth'].named_parameters():
+        #     if 'enc_blocks' in name:
+        #         tmp1.append(name)
+        #         tmp2.append(param)
+            
+        #     elif 'dec_blocks' in name:
+        #         tmp3.append(name)
+        #         tmp4.append(param)
+        
         if not train_args.with_pose:
             other_params += model['pose_encoder'].parameters()
             other_params += model['pose_decoder'].parameters()
@@ -146,8 +159,20 @@ if __name__ == "__main__":
                 if train_args.decoder_freeze:
                     param.requires_grad = False     
         
-        optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
-                                      {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
+        # filter out only params with requires_grad=True    
+        params1=[param for param in pretrained_params if param.requires_grad]
+        params2=[param for param in other_params if param.requires_grad ]
+        
+        tot_params = sum(p.numel() for p in params1) + sum(p.numel() for p in params2)
+        print('TOT TRAINABLE PARAMS: ', tot_params / 1e6 )
+        train_args.tot_trainable_params=tot_params
+        
+        # sol2
+        # params1=filter(lambda p: p.requires_grad, pretrained_params)
+        # params2=filter(lambda p: p.requires_grad, other_params)
+        
+        optimizer = torch.optim.Adam([{"params": params1, "lr":float(train_args.learning_rate)*0.1},
+                                      {"params": params2, "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
     
     else:
         encode_index = len(list(model['depth'].module.encoder.parameters()))
@@ -197,6 +222,10 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             total_loss.backward()
             optimizer.step()
+            
+            # check gradient flow (when enc and dec are frozen)
+            # model['depth'].module.enc_blocks[0].mlp.fc1.weight
+            # model['depth'].module.dec_blocks[0].mlp.fc1.weight.grad
             
             # wandb logging 
             if train_args.log_tool == 'wandb':

@@ -14,9 +14,6 @@ import networks.monodepth2_networks
 
 import utils
 from einops import rearrange
-from networks.croco.croco_downstream import croco_args_from_ckpt, CroCoDownstreamBinocular
-from networks.croco.head_downstream import PixelwiseTaskWithDPT
-from networks.croco.pos_embed import interpolate_pos_embed
 
 # seed setting
 def seed_everything(seed=42):
@@ -167,6 +164,10 @@ def model_load(train_args, device):
                                                 use_readout='project')      # DPT 에서는 cls token = readout token 이라고 부르고 projection으로 cls token 처리 
 
     elif train_args.model_info == 'croco':
+        from networks.croco.croco_downstream import croco_args_from_ckpt, CroCoDownstreamBinocular
+        from networks.croco.head_downstream import PixelwiseTaskWithDPT
+        from networks.croco.pos_embed import interpolate_pos_embed
+        
         ckpt = torch.load(train_args.pretrained_path, 'cpu')
         croco_args = croco_args_from_ckpt(ckpt)
         croco_args['img_size'] = (train_args.re_height, train_args.re_width)
@@ -395,16 +396,18 @@ def data_loader(train_args, batch_size, num_workers):
     print('DATASET: ', dataset)
     # breakpoint()
     
-    train_ds = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, 
-                       train_args.frame_ids, 4, is_train=True, doj_mask=False, img_ext=train_args.img_ext)
-
     if train_args.dataset == 'cityscapes':
+        train_ds = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, 
+                       train_args.frame_ids, 4, is_train=True, doj_mask=False, img_ext=train_args.img_ext)
         val_ds =   dataset(train_args.cs_val_path, val_filenames, train_args.re_height, train_args.re_width, 
                         train_args.frame_ids, 4, is_train=False, doj_mask=True, img_ext=train_args.img_ext)
     else:
+        train_ds = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, 
+                        train_args.frame_ids, 4, is_train=True, img_ext=train_args.img_ext)
+        
         val_ds =   dataset(train_args.data_path, val_filenames, train_args.re_height, train_args.re_width, 
                         train_args.frame_ids, 4, is_train=False, img_ext=train_args.img_ext)
-    
+        
     # if train_args.dataset == 'kitti_depth_multiframe':
     #     train_dataset = dataset(train_args.data_path, train_filenames, train_args.re_height, train_args.re_width, use_box = True, 
     #                              gt_num = -1, is_train=True, img_ext=train_args.img_ext, num_prev_frame=train_args.num_prev_frame)

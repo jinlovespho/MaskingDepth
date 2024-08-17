@@ -17,7 +17,7 @@ DATA_ARGS="
 TRAINING_ARGS="
 --num_epoch 20
 --batch_size 8
---learning_rate 1e-5
+--learning_rate 1e-4
 --num_workers 4
 --seed 41
 "
@@ -47,7 +47,7 @@ SAVE_ARGS="
 LOGGING_ARGS="
     --log_tool wandb
     --wandb_proj_name 20240719_mf_depth
-    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_baseline_lr1e5_res192_512
+    --wandb_exp_name pho_server5_gpu3_CITYSCAPES_croco_basebase_baseline_lr1e4_res192_512
     --log_path /media/dataset1/jinlovespho/aaai_log
 "
 
