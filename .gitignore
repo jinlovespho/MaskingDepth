@@ -1,0 +1,13 @@
+__pycache__/
+**/__pycache__/
+log/
+wandb/
+
+*.pth
+*.png
+*.jpg
+
+
+
+
+
