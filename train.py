@@ -29,7 +29,7 @@ def get_train_args():
     # Training args 
     parser.add_argument('--num_epoch',      type=int)  
     parser.add_argument('--batch_size',     type=int)
-    parser.add_argument('--backbone_lr',    type=float)
+    parser.add_argument('--backbone_lr',    type=float, default = None)
     parser.add_argument('--learning_rate',             type=float) 
     parser.add_argument('--num_workers',    type=int) 
     parser.add_argument('--seed',           type=int)
@@ -60,6 +60,7 @@ def get_train_args():
     parser.add_argument('--masking_threshold', type=float, default=0.1)
     parser.add_argument('--attn_agg_tf', action="store_true")
     parser.add_argument('--img_recon_weight', type=float, default=0.0)
+    parser.add_argument('--no_feat_agg', action="store_true")
     
     parser.add_argument('--num_prev_frame',         type=int)
     parser.add_argument('--cross_attn_depth',       type=int)
@@ -75,6 +76,7 @@ def get_train_args():
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--load_weight_path', type=str, default=None)
     args = parser.parse_args()
+
     return args
 
 
@@ -127,7 +129,9 @@ if __name__ == "__main__":
                 if train_args.decoder_freeze:
                     param.requires_grad = False     
         
-        optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.learning_rate)*0.1},
+        train_args.backbone_lr = train_args.backbone_lr if train_args.backbone_lr else train_args.learning_rate * 0.1
+
+        optimizer = torch.optim.Adam([{"params": filter(lambda p: p.requires_grad, pretrained_params), "lr":float(train_args.backbone_lr)},
                                       {"params": filter(lambda p: p.requires_grad, other_params), "lr":float(train_args.learning_rate)}  ], float(train_args.learning_rate))
     # data loader
     train_ds, valv_ds, train_loader, val_loader = initialize.data_loader(train_args, train_args.batch_size, train_args.num_workers)

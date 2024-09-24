@@ -200,6 +200,7 @@ def get_train_args():
     parser.add_argument("--moving_masking", type=str, default="None")
     parser.add_argument('--attn_agg_tf', action='store_true')
     parser.add_argument('--img_recon_weight', type=float, default=0.0)
+    parser.add_argument('--no_feat_agg', action='store_true')
     # Save args 
     parser.add_argument("--epoch_save_freq", type=int, default=5)
     # Logging args 
@@ -265,6 +266,14 @@ if __name__ == "__main__":
             sa1_names.append(name)
             sa1_modules.append(module)
             module.register_forward_hook(lambda m,i,o: sa1_maps.append(o.detach().cpu()) )
+
+    features = []
+    for name, module in model['depth'].named_modules():
+        if 'enc_blocks.11.mlp.drop2' in name:
+
+            module.register_forward_hook(lambda m,i,o: features.append(o.detach().cpu()) )
+
+
     # validation
     with torch.no_grad():
         utils.model_mode(model,EVAL)
@@ -276,7 +285,6 @@ if __name__ == "__main__":
         # val loop
         tqdm_val = tqdm(val_loader, desc=f'Validation Epoch: Only Once')
         for k, inputs in enumerate(tqdm_val):
-            
             total_loss = 0
             losses = {}
             
@@ -300,9 +308,25 @@ if __name__ == "__main__":
             
             sa1_map = sa1_map.mean(dim=2)   # b num_layer N1 N2
             ca1_map = ca1_map.mean(dim=2)   # b num_layer N1 N2
+
+
+            current_feature, prev_feature = features
+            features.clear()
+            current_feature = current_feature.transpose(-1,-2)
+            prev_feature = prev_feature.transpose(-1,-2)
+
+            def corr(src, trg):
+                return src.flatten(2).transpose(-1, -2) @ trg.flatten(2)
+            
+            def l2norm(feature, dim=1):
+                epsilon = 1e-6
+                norm = torch.pow(torch.sum(torch.pow(feature, 2), dim) + epsilon, 0.5).unsqueeze(dim).expand_as(feature)
+                return torch.div(feature, norm)
+            
+            correlation_map = corr(l2norm(current_feature), l2norm(prev_feature))
             
             # log_name=f'.vis_attn/{train_args.model_info}/iter{k}'
-            log_name = "vis_moving_mask"
+            log_name = f"ours_depth/iter{k}"
             if not os.path.exists(log_name):
                 os.makedirs(log_name)
                 
@@ -379,47 +403,48 @@ if __name__ == "__main__":
             cv2.imwrite(f'{log_name}/{k}_img_prev.jpg', i_img_prev_np)
             
             vis_pred_depth = pred_depth_orig[0].squeeze().cpu().numpy()     # 1 375 1242
-            vmax = np.percentile(vis_pred_depth, 95)
-            normalizer = mpl.colors.Normalize(vmin=vis_pred_depth.min(), vmax=vmax)
+            vmax = np.percentile(vis_pred_depth, 90)
+            vmin = np.percentile(vis_pred_depth, 0)
+            normalizer = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
             mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
             colormapped_pred_depth = (mapper.to_rgba(vis_pred_depth)[:, :, :3] * 255).astype(np.uint8)
             colormapped_pred_depth = cv2.resize(colormapped_pred_depth, (640,192))
             vis_pred_depth = Image.fromarray(colormapped_pred_depth)
             vis_pred_depth.save(f'{log_name}/{k}_pred_depth.jpg')
 
-            disp = F.interpolate(model_outs['tt']['pred_disp',0], model_outs['pred_depth',0, 0].shape[-2:], mode="bilinear", align_corners = False)
-            _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
+            # disp = F.interpolate(model_outs['tt']['pred_disp',0], model_outs['pred_depth',0, 0].shape[-2:], mode="bilinear", align_corners = False)
+            # _, depth = utils.disp_to_depth(disp, train_args.min_depth, train_args.max_depth)
 
-            abs_error = torch.abs(model_outs['pred_depth',0, 0] - depth) / depth
+            # abs_error = torch.abs(model_outs['pred_depth',0, 0] - depth) / depth
 
-            ## mask out top k
-            B,C,H,W = abs_error.shape
-            moving_masks = torch.ones_like(abs_error)
-            for i in range(B):
-                moving_mask = abs_error[i].view(-1)
-                topk = int(moving_mask.shape[0]*0.2)
-                _, idx = torch.topk(moving_mask, topk)
-                moving_mask = torch.ones_like(moving_mask)
-                moving_mask[idx] = 0
-                moving_masks[i] = moving_mask.view(C,H,W)
+            # ## mask out top k
+            # B,C,H,W = abs_error.shape
+            # moving_masks = torch.ones_like(abs_error)
+            # for i in range(B):
+            #     moving_mask = abs_error[i].view(-1)
+            #     topk = int(moving_mask.shape[0]*0.2)
+            #     _, idx = torch.topk(moving_mask, topk)
+            #     moving_mask = torch.ones_like(moving_mask)
+            #     moving_mask[idx] = 0
+            #     moving_masks[i] = moving_mask.view(C,H,W)
 
-            ## visualize moving mask
-            moving_masks = moving_masks[0].squeeze().cpu().numpy()
-            cv2.imwrite(f'{log_name}/{k}_moving_mask.jpg', moving_masks*255)
+            # ## visualize moving mask
+            # moving_masks = moving_masks[0].squeeze().cpu().numpy()
+            # cv2.imwrite(f'{log_name}/{k}_moving_mask.jpg', moving_masks*255)
             
-            vis_pred_depth = depth[0].squeeze().cpu().numpy()     # 1 375 1242
-            vmax = np.percentile(vis_pred_depth, 95)
-            normalizer = mpl.colors.Normalize(vmin=vis_pred_depth.min(), vmax=vmax)
-            mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
-            colormapped_pred_depth = (mapper.to_rgba(vis_pred_depth)[:, :, :3] * 255).astype(np.uint8)
-            colormapped_pred_depth = cv2.resize(colormapped_pred_depth, (640,192))
-            vis_pred_depth = Image.fromarray(colormapped_pred_depth)
-            vis_pred_depth.save(f'{log_name}/{k}_prev_depth.jpg')
+            # vis_pred_depth = depth[0].squeeze().cpu().numpy()     # 1 375 1242
+            # vmax = np.percentile(vis_pred_depth, 95)
+            # normalizer = mpl.colors.Normalize(vmin=vis_pred_depth.min(), vmax=vmax)
+            # mapper = cm.ScalarMappable(norm=normalizer, cmap='magma')
+            # colormapped_pred_depth = (mapper.to_rgba(vis_pred_depth)[:, :, :3] * 255).astype(np.uint8)
+            # colormapped_pred_depth = cv2.resize(colormapped_pred_depth, (640,192))
+            # vis_pred_depth = Image.fromarray(colormapped_pred_depth)
+            # vis_pred_depth.save(f'{log_name}/{k}_prev_depth.jpg')
 
-            ## blend curr image and mask
-            moving_masks = moving_masks * 255
-            i_img_curr_query = cv2.addWeighted(i_img_curr_np, 0.5, np.repeat(moving_masks[:, :, np.newaxis], 3, axis=2), 0.5, 0)
-            cv2.imwrite(f'{log_name}/{k}_img_curr_query.jpg', i_img_curr_query)
+            # ## blend curr image and mask
+            # moving_masks = moving_masks * 255
+            # i_img_curr_query = cv2.addWeighted(i_img_curr_np, 0.5, np.repeat(moving_masks[:, :, np.newaxis], 3, axis=2), 0.5, 0)
+            # cv2.imwrite(f'{log_name}/{k}_img_curr_query.jpg', i_img_curr_query)
 
 
             for tkn_vis_idx in rnd[:vis_num_points]:
@@ -473,13 +498,24 @@ if __name__ == "__main__":
                     interp_vis_tkn_sa1 = (interp_vis_tkn_sa1 - interp_vis_tkn_sa1.min()) / (interp_vis_tkn_sa1.max() - interp_vis_tkn_sa1.min())
                     interp_vis_tkn_ca1 = (interp_vis_tkn_ca1 - interp_vis_tkn_ca1.min()) / (interp_vis_tkn_ca1.max() - interp_vis_tkn_ca1.min())
                     
-                    # show attention map on previous image
-                    result_sa = show_mask_on_image(i_img_prev, interp_vis_tkn_sa1.squeeze())    # 192 640 3
-                    result_ca = show_mask_on_image(i_img_prev, interp_vis_tkn_ca1.squeeze())    # 192 640 3
+                    # show attention map on previous image'
+                    i_img_prev = i_img_prev[[2,1,0],:,:]
+                    result_sa = show_mask_on_image(i_img_prev.permute(1,2,0), interp_vis_tkn_sa1.squeeze())    # 192 640 3
+                    result_ca = show_mask_on_image(i_img_prev.permute(1,2,0), interp_vis_tkn_ca1.squeeze())    # 192 640 3
                     
                     # cv2.imwrite(f'{log_name}/iter{k}_batch{i}_h{vis_idx_h}_w{vis_idx_w}_img_prev_SA_layer{j}.jpg', result_sa)
                     cv2.imwrite(f'{log_name2}/batch{i}_img_prev_SA_layer.jpg', result_sa)
                     cv2.imwrite(f'{log_name2}/batch{i}_img_prev_CA_layer.jpg', result_ca)
+
+
+                    correlation_map_idx = correlation_map[0][tkn_vis_idx]
+
+                    ## visualize it
+                    correlation_map_idx = F.interpolate(correlation_map_idx.view(12,40).unsqueeze(dim=0).unsqueeze(dim=0), size=(192,640), mode='bilinear', align_corners=True)  # 1 1 192 640
+                    correlation_map_idx = (correlation_map_idx - correlation_map_idx.min()) / (correlation_map_idx.max() - correlation_map_idx.min())
+                    result_corr = show_mask_on_image(i_img_prev.permute(1,2,0), correlation_map_idx.squeeze()) 
+
+                    cv2.imwrite(f'{log_name2}/batch{i}_img_prev_corr_layer.jpg', result_corr)
                         
                         # save_image(interp_vis_tkn_sa1.squeeze(), f'{log_name}/{i}_layer{j}_loc{vis_idx_h}_{vis_idx_w}_interp_sa_map_n.jpg', normalize=True)
                         # save_image(interp_vis_tkn_ca1.squeeze(), f'{log_name}/{i}_layer{j}_loc{vis_idx_h}_{vis_idx_w}_interp_ca_map_n.jpg', normalize=True)

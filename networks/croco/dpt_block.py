@@ -714,20 +714,24 @@ class DPTOutputAggregateAdapter(nn.Module):
             
         feature = 128 if self.args.attn_agg_tf else 480
         
-        self.aggregator0 = nn.Sequential( nn.GELU(),
-                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
-        self.aggregator1 = nn.Sequential(nn.GELU(),
-                                        nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
-        self.aggregator2 = nn.Sequential( nn.GELU(),
-                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
-        self.aggregator3 = nn.Sequential( nn.GELU(),
-                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
-                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
         
-        self.proj = nn.ModuleList([nn.Conv2d(256+feature, feature,  kernel_size=1, stride=1, padding=0) for i in range(4)])
+        
+        if self.args.no_feat_agg:
+            self.proj = nn.ModuleList([nn.Conv2d(128, feature, kernel_size=1, stride=1, padding=0) for i in range(4)])
+        else:
+            self.aggregator0 = nn.Sequential( nn.GELU(),
+                                          nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                          nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+            self.aggregator1 = nn.Sequential(nn.GELU(),
+                                            nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                            nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+            self.aggregator2 = nn.Sequential( nn.GELU(),
+                                            nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                            nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+            self.aggregator3 = nn.Sequential( nn.GELU(),
+                                            nn.Conv2d(256+feature, 256, kernel_size=3, stride=1, padding=1),
+                                            nn.Conv2d(256, 256+feature, kernel_size=3, stride=1, padding=1))
+            self.proj = nn.ModuleList([nn.Conv2d(256+feature, feature,  kernel_size=1, stride=1, padding=0) for i in range(4)])
         
         # self.depth_head0 = nn.Sequential(ResidualConvUnit_custom(480,nn.ReLU(),False),
         #                                 nn.Conv2d(480, feature_dim, kernel_size=1, stride=1, padding=0))
@@ -964,37 +968,55 @@ class DPTOutputAggregateAdapter(nn.Module):
         attn_maps = [rearrange(l, 'b (nh nw) c -> b c nh nw', nh=N_H, nw=N_W) for l in attn_maps]
         attn_sizes = [(6,20),(12,40),(24,80),(48,160)]
         
+        if self.args.no_feat_agg:
+            attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
+            attn3_out = self.proj[3](attn_map3)
 
-        
-        attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
-        attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)
-        attn3_out = self.aggregator3(attn_input3) + attn_input3
-        attn3_out = self.proj[3](attn3_out)
-        
-        attn2 = F.interpolate(attn3_out, size=attn_sizes[1], mode='bilinear')
-        attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear')
-        attn2 = attn2 + attn_maps[2]
-        
-        attn_input2 = torch.cat([attn2, layers[2]], dim=1)
-        attn2_out = self.aggregator2(attn_input2) + attn_input2
-        attn2_out = self.proj[2](attn2_out)
+            attn2 = F.interpolate(attn3_out, size=attn_sizes[1], mode='bilinear')
+            attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear')
+            attn2 = attn2 + attn_maps[2]
+            attn2_out = self.proj[2](attn2)
 
-        attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
-        attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear')
-        attn1 = attn1 + attn_maps[1]
-        
-        attn_input1 = torch.cat([attn1, layers[1]], dim=1)
-        attn1_out = self.aggregator1(attn_input1) + attn_input1
-        attn1_out = self.proj[1](attn1_out)
-        
-        
-        attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')
-        attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear')
-        attn0 = attn0 + attn_maps[0]
-        
-        attn_input0 = torch.cat([attn0, layers[0]], dim=1)
-        attn0_out = self.aggregator0(attn_input0) + attn_input0
-        attn0_out = self.proj[0](attn0_out)
+            attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
+            attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear')
+            attn1 = attn1 + attn_maps[1]
+            attn1_out = self.proj[1](attn1)
+
+            attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')
+            attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear')
+            attn0 = attn0 + attn_maps[0]
+            attn0_out = self.proj[0](attn0)
+            
+        else:
+            attn_map3 = F.interpolate(attn_maps[3], size=attn_sizes[0], mode='bilinear')
+            attn_input3 = torch.cat([attn_map3, layers[3]], dim=1)
+            attn3_out = self.aggregator3(attn_input3) + attn_input3
+            attn3_out = self.proj[3](attn3_out)
+            
+            attn2 = F.interpolate(attn3_out, size=attn_sizes[1], mode='bilinear')
+            attn_maps[2] = F.interpolate(attn_maps[2], size=attn_sizes[1], mode='bilinear')
+            attn2 = attn2 + attn_maps[2]
+            
+            attn_input2 = torch.cat([attn2, layers[2]], dim=1)
+            attn2_out = self.aggregator2(attn_input2) + attn_input2
+            attn2_out = self.proj[2](attn2_out)
+
+            attn1 = F.interpolate(attn2_out, size=attn_sizes[2], mode='bilinear')
+            attn_maps[1] = F.interpolate(attn_maps[1], size=attn_sizes[2], mode='bilinear')
+            attn1 = attn1 + attn_maps[1]
+            
+            attn_input1 = torch.cat([attn1, layers[1]], dim=1)
+            attn1_out = self.aggregator1(attn_input1) + attn_input1
+            attn1_out = self.proj[1](attn1_out)
+            
+            
+            attn0 = F.interpolate(attn1_out, size=attn_sizes[3], mode='bilinear')
+            attn_maps[0] = F.interpolate(attn_maps[0], size=attn_sizes[3], mode='bilinear')
+            attn0 = attn0 + attn_maps[0]
+            
+            attn_input0 = torch.cat([attn0, layers[0]], dim=1)
+            attn0_out = self.aggregator0(attn_input0) + attn_input0
+            attn0_out = self.proj[0](attn0_out)
         
         path_4 = self.depth_head3(attn3_out)
         path_3 = self.depth_head2(attn2_out)

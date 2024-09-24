@@ -349,8 +349,8 @@ def model_load(train_args, device):
     if train_args.load_weight_path is not None:
         print('load_weight_path')
         model['depth'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'depth.pth')), strict=False)
-        model['pose_encoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_encoder.pth')))
-        model['pose_decoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_decoder.pth')))
+        # model['pose_encoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_encoder.pth')))
+        # model['pose_decoder'].load_state_dict(torch.load(os.path.join(train_args.load_weight_path,'pose_decoder.pth')))
     
 
     for key, val in model.items():
@@ -388,7 +388,7 @@ def data_loader(train_args, batch_size, num_workers):
                        train_args.frame_ids, 4, is_train=True, img_ext=train_args.img_ext)
     
     val_ds =   dataset(train_args.data_path, val_filenames, train_args.re_height, train_args.re_width, 
-                       train_args.frame_ids, 4, is_train=True, img_ext=train_args.img_ext)
+                       train_args.frame_ids, 4, is_train=False, img_ext=train_args.img_ext)
     
     
     # if train_args.dataset == 'kitti_depth_multiframe':
