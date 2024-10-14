@@ -13,9 +13,9 @@ import torch.nn as nn
 torch.backends.cuda.matmul.allow_tf32 = True # for gpu >= Ampere and pytorch >= 1.12
 from functools import partial
 
-from networks.croco.blocks import Block, DecoderBlock, PatchEmbed
-from networks.croco.pos_embed import get_2d_sincos_pos_embed, RoPE2D 
-from networks.croco.masking import RandomMask
+from models.blocks import Block, DecoderBlock, PatchEmbed
+from models.pos_embed import get_2d_sincos_pos_embed, RoPE2D 
+from models.masking import RandomMask
 
 
 class CroCoNet(nn.Module):
@@ -34,15 +34,12 @@ class CroCoNet(nn.Module):
                  norm_layer=partial(nn.LayerNorm, eps=1e-6),
                  norm_im2_in_dec=True,   # whether to apply normalization of the 'memory' = (second image) in the decoder 
                  pos_embed='cosine',     # positional embedding (either cosine or RoPE100)
-                 attn_conv4d=False,
-                 args=None,
                 ):
                 
         super(CroCoNet, self).__init__()
                 
         # patch embeddings  (with initialization done as in MAE)
         self._set_patch_embed(img_size, patch_size, enc_embed_dim)
-        self.args=args
 
         # mask generations
         self._set_mask_generator(self.patch_embed.num_patches, mask_ratio)
@@ -78,7 +75,7 @@ class CroCoNet(nn.Module):
         self._set_mask_token(dec_embed_dim)
 
         # decoder 
-        self._set_decoder(enc_embed_dim, dec_embed_dim, dec_num_heads, dec_depth, mlp_ratio, norm_layer, norm_im2_in_dec, self.args.softmax_attn)
+        self._set_decoder(enc_embed_dim, dec_embed_dim, dec_num_heads, dec_depth, mlp_ratio, norm_layer, norm_im2_in_dec)
         
         # prediction head 
         self._set_prediction_head(dec_embed_dim, patch_size)
@@ -95,14 +92,14 @@ class CroCoNet(nn.Module):
     def _set_mask_token(self, dec_embed_dim):
         self.mask_token = nn.Parameter(torch.zeros(1, 1, dec_embed_dim))
         
-    def _set_decoder(self, enc_embed_dim, dec_embed_dim, dec_num_heads, dec_depth, mlp_ratio, norm_layer, norm_im2_in_dec,softmax_attn=False):
+    def _set_decoder(self, enc_embed_dim, dec_embed_dim, dec_num_heads, dec_depth, mlp_ratio, norm_layer, norm_im2_in_dec):
         self.dec_depth = dec_depth
         self.dec_embed_dim = dec_embed_dim
         # transfer from encoder to decoder 
         self.decoder_embed = nn.Linear(enc_embed_dim, dec_embed_dim, bias=True)
         # transformer for the decoder 
         self.dec_blocks = nn.ModuleList([
-            DecoderBlock(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope, softmax_attn=softmax_attn)
+            DecoderBlock(dec_embed_dim, dec_num_heads, mlp_ratio=mlp_ratio, qkv_bias=True, norm_layer=norm_layer, norm_mem=norm_im2_in_dec, rope=self.rope)
             for i in range(dec_depth)])
         # final norm layer 
         self.dec_norm = norm_layer(dec_embed_dim)
@@ -145,7 +142,6 @@ class CroCoNet(nn.Module):
         # apply masking 
         B,N,C = x.size()
         if do_mask:
-            pos = pos.cuda()
             masks = self.mask_generator(x)
             x = x[~masks].view(B, -1, C)
             posvis = pos[~masks].view(B, -1, 2)
@@ -191,21 +187,18 @@ class CroCoNet(nn.Module):
             f2 = f2 + self.dec_pos_embed
         # apply Transformer blocks
         out = f1_
-        out2 = f2
-        attn_maps = [] 
+        out2 = f2 
         if return_all_blocks:
             _out, out = out, []
             for blk in self.dec_blocks:
-                _out, out2, attn_map = blk(_out, out2, pos1, pos2)
-                attn_maps.append(attn_map)
+                _out, out2 = blk(_out, out2, pos1, pos2)
                 out.append(_out)
             out[-1] = self.dec_norm(out[-1])
         else:
             for blk in self.dec_blocks:
-                out, out2, attn_map = blk(out, out2, pos1, pos2)
-                attn_maps.append(attn_map)
+                out, out2 = blk(out, out2, pos1, pos2)
             out = self.dec_norm(out)
-        return out, attn_maps, f1_
+        return out
 
     def patchify(self, imgs):
         """
@@ -248,7 +241,7 @@ class CroCoNet(nn.Module):
         # encoder of the second image 
         feat2, pos2, _ = self._encode_image(img2, do_mask=False)
         # decoder 
-        decfeat = self._decoder(feat1, pos1, mask1, feat2, pos2).detach()
+        decfeat = self._decoder(feat1, pos1, mask1, feat2, pos2)
         # prediction head 
         out = self.prediction_head(decfeat)
         # get target

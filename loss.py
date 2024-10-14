@@ -32,6 +32,7 @@ def compute_loss(inputs, model, train_args, mode = TRAIN,epoch=0):
     losses = {}
     total_loss = 0
     
+    breakpoint()
     if train_args.dataset == 'cityscapes':
         orig_h, orig_w = int(1024*0.75), 2048     # cityscapes gt height and width
     else:
@@ -142,6 +143,8 @@ def model_forward(inputs, model, train_args, mode, with_pose = False):
         if mode == TRAIN:
             outputs = model['depth'](inputs[('color_aug',0,0)], inputs[('color_aug',-1,0)])
         else:
+            # 
+
             outputs = model['depth'](inputs[('color',0,0)], inputs[('color',-1,0)])
         
 

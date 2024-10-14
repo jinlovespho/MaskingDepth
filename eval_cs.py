@@ -19,6 +19,8 @@ import matplotlib.cm as cm
 import PIL.Image as pil 
 import cv2 
 
+from torchvision.utils import save_image 
+
 
 TRAIN = 0
 EVAL  = 1
@@ -102,7 +104,6 @@ def compute_depth_errors(gt, pred):
     return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
 
 
-
 if __name__ == "__main__":
     
     # get all training args
@@ -136,7 +137,6 @@ if __name__ == "__main__":
     # vis_rnd_idx = rnd_idx[:val_vis_sample]
     # vis_rnd_idx = vis_rnd_idx.tolist()
     
-    
     ckpt_path = train_args.ckpt_path
     if train_args.ckpt_name == 'cs_ours':
         msg1 = model['depth'].load_state_dict(torch.load(f'{ckpt_path}/depth.pth'))
@@ -149,9 +149,12 @@ if __name__ == "__main__":
     elif train_args.ckpt_name == 'cs_manydepth':
         print('already implemented in initialize load_model')
         print('DECIDED not to implement in our framework')
-    
+
     elif train_args.ckpt_name == 'cs_dynamicdepth':
         pass
+
+    else:
+        pass  
     
     # load_weight_depth = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/depth.pth')
     # load_weight_pose_enc = torch.load('/media/data1/jinlovespho/log/mfdepth/pho_server5_gpu0_kitti_bs16_sf_selfsup_try1_eigenzhou/weights_10/pose_encoder.pth')
@@ -190,12 +193,43 @@ if __name__ == "__main__":
                 if type(val) == torch.Tensor:   # not all inputs are tensors
                     inputs[key] = val.to(device)
 
-            # val forward pass
-            total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL, epoch=epoch)
-            eval_loss += total_loss
+            # dust3r 
+            if train_args.model_info == 'cs_dust3r':
+                from networks.dust3r.inference import inference
+                from networks.dust3r.utils.image import load_images
+                from networks.dust3r.image_pairs import make_pairs
+                from networks.dust3r.cloud_opt import global_aligner, GlobalAlignerMode
+
+                save_image(inputs['color',0,0], './color_curr.jpg')
+                save_image(inputs['color',-1,0], './color_prev.jpg')
+                images = load_images(['./color_curr.jpg', './color_prev.jpg'], size=512)
+                pairs = make_pairs(images, scene_graph='complete', prefilter=None, symmetrize=True)
+                output = inference(pairs, model, device, batch_size=train_args.batch_size)
+
+                # at this stage, you have the raw dust3r predictions
+                # view1, pred1 = output['view1'], output['pred1']
+                # view2, pred2 = output['view2'], output['pred2']
+
+                scene = global_aligner(output, device=device, mode=GlobalAlignerMode.PairViewer)
+
+                # retrieve useful values from scene:
+                # imgs = scene.imgs
+                # focals = scene.get_focals()
+                # poses = scene.get_im_poses()
+                # pts3d = scene.get_pts3d()
+                # confidence_masks = scene.get_masks()
+                depth_maps = scene.get_depthmaps()
+                pred_depth = depth_maps[0]     # h w
+                orig_h, orig_w = int(1024*0.75), 2048
+                pred_depth_orig = F.interpolate(pred_depth.view(1,1,pred_depth.shape[0], pred_depth.shape[1]), (orig_h, orig_w), mode="bilinear", align_corners = True)   # 1 1 768 2048
+
+            else:
+                # val forward pass
+                total_loss, losses, pred_depth_orig, model_outs = loss.compute_loss(inputs, model, train_args, EVAL, epoch=epoch)
+                eval_loss += total_loss
             
             if train_args.dataset == 'cityscapes':
-                pred_depth_npy.extend(model_outs['pred_depth',0,0].detach().cpu().numpy())  # 192 512
+                # pred_depth_npy.extend(model_outs['pred_depth',0,0].detach().cpu().numpy())  # 192 512
                 pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu())
                 inputs_color.extend(inputs['color',0,0].detach().cpu())
                 mving_msks.extend(inputs['doj_mask'].squeeze(1).detach().cpu())
@@ -204,9 +238,11 @@ if __name__ == "__main__":
                 gt_depth = inputs['depth_gt']
                 gt_depths.extend(gt_depth.squeeze(1).detach().cpu().numpy())
                 pred_depths.extend(pred_depth_orig.squeeze(1).detach().cpu().numpy())
+            
+            # break
         
-        pred_depth_npy = np.concatenate(pred_depth_npy) # num_pred, 768, 2048
-        np.save('./ours_pred_depth_192_512.npy', pred_depth_npy)
+        # pred_depth_npy = np.concatenate(pred_depth_npy) # num_pred, 768, 2048
+        # np.save('./ours_pred_depth_192_512.npy', pred_depth_npy)
         
         # breakpoint()
         if train_args.dataset == 'cityscapes':
@@ -237,8 +273,19 @@ if __name__ == "__main__":
                 gt_height = int(round(gt_height * 0.75))    # 768
                 gt_depth = torch.from_numpy(gt_depth[:gt_height])    # 768, 2048
                 pred_depth = pred_depths[i] # 768, 2048
-                
-                cs_vis_log_path="/media/dataset1/jinlovespho/aaai_log/SUPPL/cs_vis/ours"
+
+                cs_vis_log_path="./vis/cs/dust3r"
+                path1 = f'{cs_vis_log_path}/full'
+                path2 = f'{cs_vis_log_path}/rgb'
+                path3 = f'{cs_vis_log_path}/crop'
+
+                if not os.path.exists(path1):
+                    os.makedirs(path1)
+                if not os.path.exists(path2):
+                    os.makedirs(path2)
+                if not os.path.exists(path3):
+                    os.makedirs(path3)
+
                 # pred full size
                 vis_pred_depth = pred_depth.cpu().numpy()   # 768 2048
                 vmax = np.percentile(vis_pred_depth, 95)

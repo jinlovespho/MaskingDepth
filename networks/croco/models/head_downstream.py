@@ -13,7 +13,7 @@ The forward takes the features as well as a dictionary img_info containing the k
 
 import torch
 import torch.nn as nn
-from .dpt_block import DPTOutputAdapter, DPTOutputAggregateAdapter
+from .dpt_block import DPTOutputAdapter
 
 
 class PixelwiseTaskWithDPT(nn.Module):
@@ -24,7 +24,7 @@ class PixelwiseTaskWithDPT(nn.Module):
     """
 
     def __init__(self, *, hooks_idx=None, layer_dims=[96,192,384,768],
-                 output_width_ratio=1, num_channels=1, postprocess=None, max_depth = 80., attn_agg = False,with_pose=False, residual = False, single=False, args=None, **kwargs):
+                 output_width_ratio=1, num_channels=1, postprocess=None, **kwargs):
         super(PixelwiseTaskWithDPT, self).__init__()
         self.return_all_blocks = True # backbone needs to return all layers 
         self.postprocess = postprocess
@@ -32,15 +32,9 @@ class PixelwiseTaskWithDPT(nn.Module):
         self.num_channels = num_channels
         self.hooks_idx = hooks_idx
         self.layer_dims = layer_dims
-        self.max_depth = max_depth
-        self.attn_agg = attn_agg
-        self.with_pose = with_pose
-        self.residual = residual
-        self.single = single
-        self.args=args
     
     def setup(self, croconet):
-        dpt_args = {'output_width_ratio': self.output_width_ratio, 'num_channels': self.num_channels, 'max_depth': self.max_depth}
+        dpt_args = {'output_width_ratio': self.output_width_ratio, 'num_channels': self.num_channels}
         if self.hooks_idx is None:
             if hasattr(croconet, 'dec_blocks'): # encoder + decoder 
                 step = {8: 3, 12: 4, 24: 8}[croconet.dec_depth]
@@ -50,32 +44,15 @@ class PixelwiseTaskWithDPT(nn.Module):
                 hooks_idx = [croconet.enc_depth-1-i*step for i in range(3,-1,-1)]
             self.hooks_idx = hooks_idx
             print(f'  PixelwiseTaskWithDPT: automatically setting hook_idxs={self.hooks_idx}')
-        if self.residual:
-            self.hooks_idx = [2,5,8,11] + self.hooks_idx
-        if self.single:
-            self.hooks_idx = [2,5,8,11]
-
-        dpt_args['residual'] = self.residual
         dpt_args['hooks'] = self.hooks_idx
         dpt_args['layer_dims'] = self.layer_dims
-        dpt_args['args'] = self.args
-        dpt_args['with_pose'] = self.with_pose
-        
-        if self.attn_agg:
-            dpt_args['with_pose'] = self.with_pose
-            
-            self.dpt = DPTOutputAggregateAdapter(**dpt_args)
-        else:
-            self.dpt = DPTOutputAdapter(**dpt_args)
+        self.dpt = DPTOutputAdapter(**dpt_args)
         dim_tokens = [croconet.enc_embed_dim if hook<croconet.enc_depth else croconet.dec_embed_dim for hook in self.hooks_idx]
         dpt_init_args = {'dim_tokens_enc': dim_tokens}
         self.dpt.init(**dpt_init_args)
 
 
-    def forward(self, x, img_info, attn_map=None, intrinsics=None):
-        if self.attn_agg:
-            out = self.dpt(x, image_size=(img_info['height'],img_info['width']),attn_map=attn_map, intrinsics=intrinsics)
-        else:
-            out = self.dpt(x, image_size=(img_info['height'],img_info['width']),attn_map=attn_map, intrinsics=intrinsics)
+    def forward(self, x, img_info):
+        out = self.dpt(x, image_size=(img_info['height'],img_info['width']))
         if self.postprocess: out = self.postprocess(out)
         return out

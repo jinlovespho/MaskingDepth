@@ -264,7 +264,14 @@ def model_load(train_args, device):
         max_depth_bin = encoder_dict.get('max_depth_bin')
         train_args.min_depth_bin = min_depth_bin
         train_args.max_depth_bin = max_depth_bin
-
+    
+    elif train_args.model_info == 'cs_dust3r':
+        from networks.dust3r.model import AsymmetricCroCo3DStereo
+        model_name = train_args.pretrained_path
+        # you can put the path to a local checkpoint in model_name if needed
+        # m1 = AsymmetricCroCo3DStereo(pos_embed='RoPE100', patch_embed_cls='ManyAR_PatchEmbed', img_size=(512, 512), head_type='dpt', output_mode='pts3d', enc_embed_dim=1024, enc_depth=24, enc_num_heads=16, dec_embed_dim=768, dec_depth=12, dec_num_heads=12)
+        # m2 = AsymmetricCroCo3DStereo.from_pretrained(model_name)
+        model['depth'] = AsymmetricCroCo3DStereo.from_pretrained(model_name).to(device)
 
     # JINLOVESPHO sf_selfsup_try1
     elif train_args.model_info == 'sf_selfsup_try1':

@@ -135,10 +135,6 @@ except ImportError:
             
         def apply_rope1d(self, tokens, pos1d, cos, sin):
             assert pos1d.ndim==2
-            pos1d = pos1d.cuda()
-            cos = cos.cuda()
-            sin = sin.cuda()
-            
             cos = torch.nn.functional.embedding(pos1d, cos)[:, None, :, :]
             sin = torch.nn.functional.embedding(pos1d, sin)[:, None, :, :]
             return (tokens * cos) + (self.rotate_half(tokens) * sin)
